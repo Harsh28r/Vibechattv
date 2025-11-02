@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ometv', {
+    const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://db1:123456g@cluster0.fcyiy3l.mongodb.net/deltacrm?retryWrites=true&w=majority&appName=Cluster0', {
       // mongodb+srv://hars_h:<M028663@cluster0.ws9f0.mongodb.net/
       maxPoolSize: 50,
       minPoolSize: 10,
