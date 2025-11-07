@@ -18,6 +18,8 @@ import authRoutes from './routes/auth.js';
 import facebookRoutes from './routes/facebook.js';
 import googleRoutes from './routes/google.js';
 import firebaseRoutes from './routes/firebase.js';
+import moderationRoutes from './routes/moderation.js';
+import { verifyToken } from './middleware/auth.js';
 
 // Load environment variables
 dotenv.config();
@@ -27,11 +29,16 @@ const app = express();
 const httpServer = createServer(app);
 
 // Initialize Socket.IO with CORS
+// Get CORS origin from environment, allow multiple origins or single origin
+const socketCorsOrigin = process.env.CORS_ORIGIN 
+  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+  : (process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173', 'http://localhost:3000']);
+
 const io = new Server(httpServer, {
   cors: {
-    origin: '*', // Allow all origins in development
+    origin: socketCorsOrigin.length === 0 ? '*' : socketCorsOrigin,
     methods: ['GET', 'POST'],
-    credentials: false
+    credentials: true
   },
   maxHttpBufferSize: 1e6, // 1MB
   pingTimeout: 60000,
@@ -41,9 +48,15 @@ const io = new Server(httpServer, {
 });
 
 // Middleware
+// Get CORS origin from environment, allow multiple origins or single origin
+const expressCorsOrigin = process.env.CORS_ORIGIN 
+  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+  : (process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173', 'http://localhost:3000']);
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  credentials: true // Enable credentials for auth
+  origin: expressCorsOrigin.length === 0 ? '*' : expressCorsOrigin,
+  credentials: true, // Enable credentials for auth
+  optionsSuccessStatus: 200 // For legacy browser support
 }));
 app.use(compression());
 app.use(express.json());
@@ -81,6 +94,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/auth', facebookRoutes);
 app.use('/api/auth', googleRoutes);
 app.use('/api/auth', firebaseRoutes);
+app.use('/api/moderation', moderationRoutes);
 
 // Initialize matching queue
 const matchingQueue = new MatchingQueue();
@@ -171,7 +185,38 @@ app.get('/api/stats', (req, res) => {
 });
 
 // Socket.IO Connection Handling
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
+  let authedUser = null;
+  const tokenFromAuth = socket.handshake.auth?.token;
+  const tokenFromHeader = socket.handshake.headers?.authorization?.startsWith('Bearer ')
+    ? socket.handshake.headers.authorization.substring(7)
+    : null;
+  const token = tokenFromAuth || tokenFromHeader;
+
+  if (token) {
+    try {
+      const decoded = verifyToken(token);
+      if (decoded?.id) {
+        authedUser = await User.findById(decoded.id);
+        if (authedUser) {
+          socket.data.userId = authedUser._id.toString();
+          // If user is banned, disconnect immediately
+          if (authedUser.bannedUntil && authedUser.bannedUntil.getTime() > Date.now()) {
+            socket.emit('banned', {
+              message: 'Your account is temporarily suspended due to policy violations.',
+              bannedUntil: authedUser.bannedUntil,
+              banReason: authedUser.banReason || 'Community guidelines violation'
+            });
+            setTimeout(() => socket.disconnect(true), 200);
+            return;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error verifying socket token:', error.message);
+    }
+  }
+
   activeConnections++;
   console.log(`🔌 New connection: ${socket.id} | Total: ${activeConnections}`);
 
@@ -194,6 +239,24 @@ io.on('connection', (socket) => {
     try {
       console.log(`🔍 ${socket.id} started searching`);
       console.log('Preferences:', userData);
+
+      // Check ban status before proceeding
+      if (socket.data?.userId) {
+        const dbUser = await User.findById(socket.data.userId).select('bannedUntil banReason');
+        if (dbUser?.bannedUntil && dbUser.bannedUntil.getTime() > Date.now()) {
+          socket.emit('banned', {
+            message: 'Your account is temporarily suspended due to policy violations.',
+            bannedUntil: dbUser.bannedUntil,
+            banReason: dbUser.banReason
+          });
+          return;
+        } else if (dbUser && dbUser.bannedUntil && dbUser.bannedUntil.getTime() <= Date.now()) {
+          // Ban expired – clear fields for next time
+          dbUser.bannedUntil = null;
+          dbUser.banReason = null;
+          await dbUser.save();
+        }
+      }
       
       // Prepare user data for matching queue (use detected country from socket)
       const userDataForQueue = {
@@ -207,11 +270,16 @@ io.on('connection', (socket) => {
       };
 
       // Add to matching queue FIRST (fast, in-memory)
-      const result = matchingQueue.addToQueue(socket.id, userDataForQueue);
+      const result = matchingQueue.addToQueue(socket.id, {
+        ...userDataForQueue,
+        userId: socket.data?.userId || null
+      });
       
       // Update database asynchronously (non-blocking)
+      const userQuery = socket.data?.userId ? { _id: socket.data.userId } : { socketId: socket.id };
+
       User.findOneAndUpdate(
-        { socketId: socket.id },
+        userQuery,
         {
           socketId: socket.id,
           isOnline: true,

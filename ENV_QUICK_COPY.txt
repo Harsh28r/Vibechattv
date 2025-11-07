@@ -30,3 +30,8 @@ FACEBOOK_CALLBACK_URL=http://YOUR_EC2_IP:5000/api/auth/facebook/callback
 # 5. JWT_SECRET: Generate with: openssl rand -base64 32 (use different one)
 # 6. YOUR_EC2_IP: Your EC2 public IP address
 
+
+
+
+
+https://vibechat-1-2wkw.onrender.com

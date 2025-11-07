@@ -115,6 +115,30 @@ const userSchema = new mongoose.Schema({
   isGuest: {
     type: Boolean,
     default: false
+  },
+
+  // Moderation
+  bannedUntil: {
+    type: Date,
+    default: null
+  },
+  banReason: {
+    type: String,
+    default: null,
+    trim: true,
+    maxlength: 280
+  },
+  banCount: {
+    type: Number,
+    default: 0
+  },
+  reportCount: {
+    type: Number,
+    default: 0
+  },
+  lastReportedAt: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: false, // We handle createdAt manually
