@@ -21,6 +21,8 @@ import firebaseRoutes from './routes/firebase.js';
 import moderationRoutes from './routes/moderation.js';
 import { verifyToken } from './middleware/auth.js';
 
+
+
 // Load environment variables
 dotenv.config();
 
