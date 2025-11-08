@@ -21,6 +21,18 @@ initializeApp({
 // @route   POST /api/auth/firebase-sync
 // @desc    Sync Firebase user with MongoDB
 // @access  Public
+const normalizeProvider = (rawProvider) => {
+  if (!rawProvider) return 'firebase';
+  const provider = rawProvider.toLowerCase();
+
+  if (provider.includes('google')) return 'google';
+  if (provider.includes('facebook')) return 'facebook';
+  if (provider.includes('password') || provider === 'local') return 'local';
+  if (provider.includes('firebase')) return 'firebase';
+
+  return 'firebase';
+};
+
 router.post('/firebase-sync', async (req, res) => {
   try {
     const { uid, email, displayName, photoURL, provider } = req.body;
@@ -28,6 +40,8 @@ router.post('/firebase-sync', async (req, res) => {
     if (!uid) {
       return res.status(400).json({ message: 'Firebase UID is required' });
     }
+
+    const normalizedProvider = normalizeProvider(provider);
 
     // Check if user already exists
     let user = await User.findOne({ firebaseUid: uid });
@@ -37,6 +51,7 @@ router.post('/firebase-sync', async (req, res) => {
       user.email = email || user.email;
       user.displayName = displayName || user.displayName;
       user.avatar = photoURL || user.avatar;
+      user.provider = normalizedProvider || user.provider;
       user.lastActive = Date.now();
       await user.save();
     } else {
@@ -47,7 +62,7 @@ router.post('/firebase-sync', async (req, res) => {
         username: displayName || email?.split('@')[0] || 'User',
         displayName: displayName,
         avatar: photoURL,
-        provider: provider || 'firebase',
+        provider: normalizedProvider,
         isGuest: false
       });
     }
