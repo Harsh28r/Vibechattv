@@ -3,8 +3,8 @@ module.exports = {
   apps: [{
     name: 'vibechat-backend',
     script: './server.js',
-    instances: 'max', // Use all CPU cores
-    exec_mode: 'cluster',
+    instances: 1, // Use all CPU cores
+    exec_mode: 'fork',
     autorestart: true,
     watch: false,
     max_memory_restart: '1G',

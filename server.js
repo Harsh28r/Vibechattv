@@ -53,7 +53,7 @@ const io = new Server(httpServer, {
 // Get CORS origin from environment, allow multiple origins or single origin
 const expressCorsOrigin = process.env.CORS_ORIGIN 
   ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
-  : (process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173', 'http://localhost:3000']);
+  : (process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173', 'http://localhost:3000','https://camify.fun']);
 
 app.use(cors({
   origin: expressCorsOrigin.length === 0 ? '*' : expressCorsOrigin,
@@ -597,7 +597,7 @@ async function handleNewMatch(user1, user2) {
 }
 
 // Start server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 httpServer.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════╗
