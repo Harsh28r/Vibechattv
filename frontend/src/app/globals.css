@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #e7eef4;
+  --bg-deep: #0c1522;
+  --ink: #0c1522;
+  --muted: #5a6b7d;
+  --accent: #ff5a2b;
+  --accent-2: #1fa7a0;
+  --surface: rgba(255, 255, 255, 0.55);
+  --line: rgba(12, 21, 34, 0.12);
+  --glow: rgba(31, 167, 160, 0.35);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-deep: var(--bg-deep);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, white);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
+}
+
+@keyframes grid-drift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 80px 80px;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.7s ease both;
+}
+
+.animate-fade-up-delay {
+  animation: fade-up 0.8s ease 0.12s both;
+}
+
+.animate-fade-up-delay-2 {
+  animation: fade-up 0.85s ease 0.24s both;
+}
+
+.animate-float {
+  animation: float-soft 6s ease-in-out infinite;
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+.hero-atmosphere {
+  background:
+    radial-gradient(ellipse 90% 70% at 70% 20%, rgba(31, 167, 160, 0.28), transparent 55%),
+    radial-gradient(ellipse 70% 60% at 10% 80%, rgba(255, 90, 43, 0.18), transparent 50%),
+    linear-gradient(160deg, #dbe7f0 0%, #e7eef4 45%, #cfdde8 100%);
+}
+
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(12, 21, 34, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(12, 21, 34, 0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: grid-drift 28s linear infinite;
+  mask-image: radial-gradient(ellipse 80% 70% at 60% 40%, black 20%, transparent 75%);
+}
+
+.chat-shell {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(31, 167, 160, 0.2), transparent 55%),
+    #0c1522;
+  color: #eef3f7;
+}
