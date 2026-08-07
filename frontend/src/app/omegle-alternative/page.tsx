@@ -21,10 +21,10 @@ const content = [
     "Yes — random stranger video chat with skip. Built on WebRTC + Socket.IO matching.",
   ],
   [
-    "Is camera required?",
-    "Yes. Camera is compulsory so the platform stays face-to-face and honest.",
+    "Is camera/mic required?",
+    "Yes. Both are compulsory — face + voice, no mute/cam-off mode.",
   ],
-  ["Do I need an account?", "No. Open chat, allow camera, start searching."],
+  ["Do I need an account?", "No. Open chat, allow camera + mic, start searching."],
   ["Is it free?", "Yes. Core random chat is free."],
 ];
 

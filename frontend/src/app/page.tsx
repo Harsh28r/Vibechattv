@@ -19,8 +19,8 @@ const features = [
   },
   {
     icon: IconCamera,
-    title: "Camera required",
-    body: "Real faces only. Cam stays on so the room stays honest.",
+    title: "Cam + mic locked",
+    body: "Real faces and real voice. No cam-off, no mute theater.",
   },
   {
     icon: IconSkip,
@@ -57,20 +57,20 @@ export default function HomePage() {
 
           <p className="animate-fade-up-delay-2 mt-4 max-w-[38ch] text-base leading-relaxed text-[var(--muted)] sm:text-lg">
             Random video chat built for people who want face time — not fake profiles.
-            Camera on. Match fast. Skip free.
+            Camera + mic on. Match fast. Skip free.
           </p>
 
           <div className="animate-fade-up-delay-2 mt-8 flex flex-wrap items-center gap-4">
             <Link href="/chat" className="btn-primary text-base">
               <IconCamera size={20} />
-              Start with camera
+              Start live
             </Link>
             <OnlineCount />
           </div>
 
           <p className="mt-5 flex items-center gap-2 text-xs text-[var(--muted)]">
             <IconUsers size={14} />
-            18+ · Camera compulsory · No account needed
+            18+ · Cam + mic compulsory · No account needed
           </p>
         </div>
 
@@ -113,7 +113,7 @@ export default function HomePage() {
             Built different
           </h2>
           <p className="mt-3 max-w-xl text-[var(--muted)]">
-            A creative stranger platform — sharp UI, compulsory cam, zero fluff.
+            A creative stranger platform — sharp UI, cam + mic locked, zero fluff.
           </p>
           <ul className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {features.map(({ icon: Icon, title, body }) => (

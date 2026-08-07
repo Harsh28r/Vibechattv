@@ -7,7 +7,6 @@ import {
   IconCamera,
   IconLock,
   IconMic,
-  IconMicOff,
   IconSend,
   IconSkip,
   IconStop,
@@ -40,7 +39,6 @@ export function VideoChat() {
   const [partnerCountry, setPartnerCountry] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatLine[]>([]);
   const [draft, setDraft] = useState("");
-  const [muted, setMuted] = useState(false);
   const [camError, setCamError] = useState<string | null>(null);
   const [camLoading, setCamLoading] = useState(false);
 
@@ -81,8 +79,13 @@ export function VideoChat() {
   const ensureLocalMedia = useCallback(async () => {
     if (localStreamRef.current) {
       const videoTrack = localStreamRef.current.getVideoTracks()[0];
-      if (videoTrack && videoTrack.readyState === "live") {
+      const audioTrack = localStreamRef.current.getAudioTracks()[0];
+      if (
+        videoTrack?.readyState === "live" &&
+        audioTrack?.readyState === "live"
+      ) {
         videoTrack.enabled = true;
+        audioTrack.enabled = true;
         attachLocalPreview(localStreamRef.current);
         return localStreamRef.current;
       }
@@ -95,15 +98,20 @@ export function VideoChat() {
         width: { ideal: 1280 },
         height: { ideal: 720 },
       },
-      audio: true,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
     });
 
     const videoTrack = stream.getVideoTracks()[0];
-    if (!videoTrack) {
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!videoTrack || !audioTrack) {
       stream.getTracks().forEach((t) => t.stop());
-      throw new Error("Camera is required to use Camify.");
+      throw new Error("Camera and microphone are required to use Camify.");
     }
     videoTrack.enabled = true;
+    audioTrack.enabled = true;
 
     localStreamRef.current = stream;
     attachLocalPreview(stream);
@@ -166,7 +174,9 @@ export function VideoChat() {
       await ensureLocalMedia();
       setGate("live");
     } catch {
-      setCamError("Camera access is compulsory. Allow camera + mic in browser settings, then retry.");
+      setCamError(
+        "Camera + mic are compulsory. Allow both in browser settings, then retry."
+      );
     } finally {
       setCamLoading(false);
     }
@@ -203,7 +213,7 @@ export function VideoChat() {
         await createPeer(payload.partnerId, isInitiator);
       } catch {
         setStatus("error");
-        setStatusMsg("Camera required — enable it to keep chatting.");
+        setStatusMsg("Camera + mic required — enable both to keep chatting.");
         setGate("camera");
       }
     };
@@ -313,7 +323,7 @@ export function VideoChat() {
       })
       .catch(() => {
         setStatus("error");
-        setStatusMsg("Camera is compulsory.");
+        setStatusMsg("Camera + mic are compulsory.");
         setGate("camera");
       });
 
@@ -369,14 +379,6 @@ export function VideoChat() {
     setDraft("");
   };
 
-  const toggleMute = () => {
-    const next = !muted;
-    localStreamRef.current?.getAudioTracks().forEach((t) => {
-      t.enabled = !next;
-    });
-    setMuted(next);
-  };
-
   if (gate === "age") {
     return (
       <main className="chat-shell flex min-h-dvh items-center justify-center px-5">
@@ -396,7 +398,7 @@ export function VideoChat() {
             {siteConfig.name}
           </Link>
           <p className="mt-5 text-lg text-white/75">
-            18+ platform. Real faces only — camera is compulsory.
+            18+ platform. Camera + mic compulsory — real talk only.
           </p>
           <button
             type="button"
@@ -436,10 +438,10 @@ export function VideoChat() {
             </div>
             <div className="p-6 text-center">
               <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold">
-                Camera required
+                Camera + mic required
               </h1>
               <p className="mt-2 text-sm leading-relaxed text-white/60">
-                No cam-off mode. Enable your camera to enter the match queue.
+                No cam-off. No mute. Enable both to enter the match queue.
               </p>
               {camError && (
                 <p className="mt-3 text-sm text-[var(--accent)]">{camError}</p>
@@ -451,7 +453,7 @@ export function VideoChat() {
                 className="btn-primary mt-6 w-full disabled:opacity-60"
               >
                 <IconCamera size={18} />
-                {camLoading ? "Requesting camera..." : "Allow camera & enter"}
+                {camLoading ? "Requesting access..." : "Allow camera & mic"}
               </button>
             </div>
           </div>
@@ -489,9 +491,16 @@ export function VideoChat() {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#070b14]/70">
               <div className="spin-ring size-14 rounded-full border border-dashed border-[var(--accent-2)]/50" />
               <p className="animate-fade-up text-lg text-white/80">{statusMsg}</p>
-              <p className="flex items-center gap-1.5 text-xs text-white/40">
-                <IconCamera size={14} className="text-[var(--accent)]" />
-                Your camera is live
+              <p className="flex items-center gap-2 text-xs text-white/40">
+                <span className="inline-flex items-center gap-1">
+                  <IconCamera size={14} className="text-[var(--accent)]" />
+                  Cam
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <IconMic size={14} className="text-[var(--accent-2)]" />
+                  Mic
+                </span>
+                live
               </p>
             </div>
           )}
@@ -502,9 +511,15 @@ export function VideoChat() {
             muted
             className="absolute bottom-3 right-3 h-32 w-24 rounded-xl object-cover ring-2 ring-[var(--accent)]/70 sm:h-40 sm:w-28"
           />
-          <span className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/80">
-            <IconCamera size={12} className="text-[var(--accent)]" />
-            Cam on
+          <span className="absolute bottom-3 left-3 inline-flex items-center gap-2 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/80">
+            <span className="inline-flex items-center gap-1">
+              <IconCamera size={12} className="text-[var(--accent)]" />
+              Cam
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <IconMic size={12} className="text-[var(--accent-2)]" />
+              Mic
+            </span>
           </span>
         </div>
 
@@ -551,18 +566,13 @@ export function VideoChat() {
 
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-center gap-2 px-3 pb-6 sm:justify-between sm:px-6">
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={toggleMute}
-            className="icon-btn"
-            data-active={muted}
-          >
-            {muted ? <IconMicOff size={18} /> : <IconMic size={18} />}
-            {muted ? "Unmute" : "Mute"}
-          </button>
           <span className="icon-btn cursor-default opacity-90" title="Camera is compulsory">
             <IconCamera size={18} className="text-[var(--accent)]" />
-            Camera locked on
+            Cam locked
+          </span>
+          <span className="icon-btn cursor-default opacity-90" title="Mic is compulsory">
+            <IconMic size={18} className="text-[var(--accent-2)]" />
+            Mic locked
           </span>
         </div>
         <div className="flex flex-wrap gap-2">

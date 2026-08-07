@@ -40,7 +40,7 @@ export default function RandomVideoChatPage() {
           <h2 className="text-xl font-semibold">How it works</h2>
           <ol className="mt-4 list-decimal space-y-3 pl-5 text-[var(--muted)]">
             <li>Open the chat room and confirm you&apos;re 18+.</li>
-            <li>Allow camera — it&apos;s compulsory. No cam-off mode.</li>
+            <li>Allow camera + mic — both compulsory. No mute / cam-off.</li>
             <li>We match you over a secure signaling channel; media stays peer-to-peer.</li>
             <li>Skip to find someone new anytime.</li>
           </ol>
