@@ -13,6 +13,7 @@ import connectDB from './config/database.js';
 import MatchingQueue from './utils/MatchingQueue.js';
 import ChatSession from './models/ChatSession.js';
 import User from './models/User.js';
+import Report from './models/Report.js';
 import passport from './config/passport.js';
 import authRoutes from './routes/auth.js';
 import facebookRoutes from './routes/facebook.js';
@@ -411,6 +412,132 @@ io.on('connection', async (socket) => {
       }
     } catch (error) {
       console.error('Error sending message:', error);
+    }
+  });
+
+  // Guest report (no auth) — works with socket-upserted users
+  socket.on('report-partner', async ({ reason, details }) => {
+    try {
+      const partnerSocketId = matchingQueue.getPartner(socket.id);
+      const cleanReason = String(reason || '').trim().slice(0, 120);
+      if (!partnerSocketId || !cleanReason) {
+        socket.emit('report-result', {
+          success: false,
+          message: 'No active partner to report'
+        });
+        return;
+      }
+
+      let reporter = await User.findOne({ socketId: socket.id });
+      if (!reporter) {
+        reporter = await User.create({
+          socketId: socket.id,
+          displayName: 'Anonymous',
+          isOnline: true
+        });
+      }
+
+      let reportedUser = await User.findOne({ socketId: partnerSocketId });
+      if (!reportedUser) {
+        reportedUser = await User.create({
+          socketId: partnerSocketId,
+          displayName: 'Anonymous',
+          isOnline: true
+        });
+      }
+
+      if (reporter._id.equals(reportedUser._id)) {
+        socket.emit('report-result', {
+          success: false,
+          message: 'Invalid report target'
+        });
+        return;
+      }
+
+      const existingReport = await Report.findOne({
+        reporter: reporter._id,
+        reportedUser: reportedUser._id,
+        createdAt: { $gte: new Date(Date.now() - 60 * 60 * 1000) }
+      });
+
+      if (existingReport) {
+        socket.emit('report-result', {
+          success: false,
+          message: 'You already reported this user recently'
+        });
+        // Still disconnect them
+      } else {
+        const report = await Report.create({
+          reporter: reporter._id,
+          reportedUser: reportedUser._id,
+          reason: cleanReason,
+          details: details ? String(details).slice(0, 1000) : undefined
+        });
+
+        reportedUser.reportCount = (reportedUser.reportCount || 0) + 1;
+        reportedUser.lastReportedAt = new Date();
+
+        const REPORT_THRESHOLD = parseInt(process.env.REPORT_THRESHOLD || '3', 10);
+        const BAN_DURATION_HOURS = parseInt(process.env.BAN_DURATION_HOURS || '360', 10);
+        const BAN_DURATION_MS = BAN_DURATION_HOURS * 60 * 60 * 1000;
+        const HARSH_REPORT_THRESHOLD = parseInt(process.env.HARSH_REPORT_THRESHOLD || '20', 10);
+        const HARSH_BAN_DURATION_HOURS = parseInt(
+          process.env.HARSH_BAN_DURATION_HOURS || `${BAN_DURATION_HOURS}`,
+          10
+        );
+        const HARSH_BAN_DURATION_MS = HARSH_BAN_DURATION_HOURS * 60 * 60 * 1000;
+
+        const reasonKey = cleanReason.toLowerCase();
+        const hitHarshThreshold = reportedUser.reportCount >= HARSH_REPORT_THRESHOLD;
+        const hitStandardThreshold =
+          reportedUser.reportCount >= REPORT_THRESHOLD || reasonKey.includes('explicit');
+
+        let autoBanned = false;
+        if (hitHarshThreshold || hitStandardThreshold) {
+          const durationMs = hitHarshThreshold ? HARSH_BAN_DURATION_MS : BAN_DURATION_MS;
+          reportedUser.bannedUntil = new Date(Date.now() + durationMs);
+          reportedUser.banReason = hitHarshThreshold
+            ? `Auto-ban: ${reportedUser.reportCount} community reports`
+            : `Auto-ban triggered by user reports (${reportedUser.reportCount})`;
+          reportedUser.banCount = (reportedUser.banCount || 0) + 1;
+          autoBanned = true;
+          report.autoResolved = true;
+          report.status = 'reviewed';
+          await report.save();
+        }
+
+        await reportedUser.save();
+
+        socket.emit('report-result', {
+          success: true,
+          autoBanned,
+          message: autoBanned
+            ? 'Report submitted. User was temporarily suspended.'
+            : 'Report submitted. Thanks for keeping Camify safer.'
+        });
+      }
+
+      // End session + kick reported partner (same as skip)
+      const partnerId = matchingQueue.cleanup(socket.id);
+      if (partnerId) {
+        io.to(partnerId).emit('partner-disconnected', {
+          reason: 'Partner left'
+        });
+        await User.updateMany(
+          { socketId: { $in: [socket.id, partnerId] } },
+          { inChat: false, partnerId: null }
+        );
+        await endChatSession(socket.id, partnerId);
+        matchingQueue.cleanup(partnerId);
+      }
+
+      socket.emit('partner-disconnected', { reason: 'Reported — finding next' });
+    } catch (error) {
+      console.error('Error reporting partner:', error);
+      socket.emit('report-result', {
+        success: false,
+        message: 'Failed to submit report'
+      });
     }
   });
 

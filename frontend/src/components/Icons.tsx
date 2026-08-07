@@ -92,3 +92,11 @@ export function IconLock(props: IconProps) {
     </svg>
   );
 }
+
+export function IconFlag(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...base(props)}>
+      <path d="M5 21V4M5 4h10l-1.5 3.5L15 11H5" />
+    </svg>
+  );
+}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   IconCamera,
+  IconFlag,
   IconLock,
   IconMic,
   IconSend,
@@ -13,6 +14,19 @@ import {
 } from "@/components/Icons";
 import { disconnectSocket, getSocket } from "@/lib/socket";
 import { siteConfig } from "@/lib/site";
+import {
+  GENDER_OPTIONS,
+  INTEREST_OPTIONS,
+  LOOKING_FOR_OPTIONS,
+  REPORT_REASONS,
+  type Gender,
+  type MatchPrefs,
+  type PrefGender,
+  defaultPrefs,
+  loadPrefs,
+  prefsToSearchPayload,
+  savePrefs,
+} from "@/lib/prefs";
 
 type Status =
   | "idle"
@@ -23,7 +37,7 @@ type Status =
   | "error"
   | "banned";
 
-type Gate = "age" | "camera" | "live";
+type Gate = "age" | "prefs" | "camera" | "live";
 
 type ChatLine = { id: string; from: "me" | "partner"; text: string };
 
@@ -31,6 +45,30 @@ const iceServers: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ];
+
+function Chip({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md border px-3 py-1.5 text-sm font-semibold transition ${
+        active
+          ? "border-[var(--accent)] bg-[var(--accent)]/20 text-white"
+          : "border-white/10 bg-white/[0.03] text-white/70 hover:border-white/25"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
 
 export function VideoChat() {
   const [gate, setGate] = useState<Gate>("age");
@@ -41,7 +79,13 @@ export function VideoChat() {
   const [draft, setDraft] = useState("");
   const [camError, setCamError] = useState<string | null>(null);
   const [camLoading, setCamLoading] = useState(false);
+  const [prefs, setPrefs] = useState<MatchPrefs>(defaultPrefs);
+  const [showReport, setShowReport] = useState(false);
+  const [reportReason, setReportReason] = useState<string>(REPORT_REASONS[0]);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
+  const prefsRef = useRef<MatchPrefs>(defaultPrefs);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -50,6 +94,18 @@ export function VideoChat() {
   const partnerIdRef = useRef<string | null>(null);
   const makingOfferRef = useRef(false);
   const politeRef = useRef(false);
+
+  useEffect(() => {
+    const loaded = loadPrefs();
+    setPrefs(loaded);
+    prefsRef.current = loaded;
+  }, []);
+
+  const updatePrefs = (next: MatchPrefs) => {
+    setPrefs(next);
+    prefsRef.current = next;
+    savePrefs(next);
+  };
 
   const attachLocalPreview = useCallback((stream: MediaStream) => {
     [localVideoRef.current, previewVideoRef.current].forEach((el) => {
@@ -67,6 +123,7 @@ export function VideoChat() {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     setPartnerCountry(null);
     setMessages([]);
+    setShowReport(false);
   }, []);
 
   const stopLocalMedia = useCallback(() => {
@@ -167,6 +224,10 @@ export function VideoChat() {
     [cleanupPeer, ensureLocalMedia]
   );
 
+  const emitSearch = useCallback(() => {
+    getSocket().emit("start-search", prefsToSearchPayload(prefsRef.current));
+  }, []);
+
   const enableCamera = async () => {
     setCamLoading(true);
     setCamError(null);
@@ -190,10 +251,7 @@ export function VideoChat() {
     const onConnect = () => {
       setStatus("searching");
       setStatusMsg("Searching for someone...");
-      socket.emit("start-search", {
-        gender: "other",
-        preferences: { gender: "any", country: "ANY" },
-      });
+      emitSearch();
     };
 
     const onSearching = (payload: { message?: string }) => {
@@ -277,14 +335,18 @@ export function VideoChat() {
       ]);
     };
 
-    const onPartnerLeft = () => {
+    const onPartnerLeft = (payload?: { reason?: string }) => {
       cleanupPeer();
       setStatus("searching");
-      setStatusMsg("Partner left. Finding someone new...");
-      socket.emit("start-search", {
-        gender: "other",
-        preferences: { gender: "any", country: "ANY" },
-      });
+      setStatusMsg(payload?.reason || "Partner left. Finding someone new...");
+      emitSearch();
+    };
+
+    const onReportResult = (payload: { success?: boolean; message?: string }) => {
+      setReportBusy(false);
+      setShowReport(false);
+      setToast(payload.message || (payload.success ? "Report submitted." : "Report failed."));
+      setTimeout(() => setToast(null), 3500);
     };
 
     const onBanned = (payload: { message?: string }) => {
@@ -310,6 +372,7 @@ export function VideoChat() {
     socket.on("ice-candidate", onIce);
     socket.on("chat-message", onChat);
     socket.on("partner-disconnected", onPartnerLeft);
+    socket.on("report-result", onReportResult);
     socket.on("banned", onBanned);
     socket.on("server-full", onFull);
     socket.on("error", onError);
@@ -336,6 +399,7 @@ export function VideoChat() {
       socket.off("ice-candidate", onIce);
       socket.off("chat-message", onChat);
       socket.off("partner-disconnected", onPartnerLeft);
+      socket.off("report-result", onReportResult);
       socket.off("banned", onBanned);
       socket.off("server-full", onFull);
       socket.off("error", onError);
@@ -344,7 +408,7 @@ export function VideoChat() {
       stopLocalMedia();
       disconnectSocket();
     };
-  }, [gate, cleanupPeer, createPeer, ensureLocalMedia, stopLocalMedia]);
+  }, [gate, cleanupPeer, createPeer, emitSearch, ensureLocalMedia, stopLocalMedia]);
 
   const skip = () => {
     const socket = getSocket();
@@ -364,6 +428,12 @@ export function VideoChat() {
     setGate("age");
   };
 
+  const submitReport = () => {
+    if (!partnerIdRef.current || reportBusy) return;
+    setReportBusy(true);
+    getSocket().emit("report-partner", { reason: reportReason });
+  };
+
   const sendMessage = (e: FormEvent) => {
     e.preventDefault();
     const text = draft.trim();
@@ -377,6 +447,16 @@ export function VideoChat() {
       { id: `${Date.now()}-m`, from: "me", text },
     ]);
     setDraft("");
+  };
+
+  const toggleInterest = (interest: string) => {
+    const has = prefs.interests.includes(interest);
+    const interests = has
+      ? prefs.interests.filter((i) => i !== interest)
+      : prefs.interests.length >= 5
+        ? prefs.interests
+        : [...prefs.interests, interest];
+    updatePrefs({ ...prefs, interests });
   };
 
   if (gate === "age") {
@@ -402,7 +482,7 @@ export function VideoChat() {
           </p>
           <button
             type="button"
-            onClick={() => setGate("camera")}
+            onClick={() => setGate("prefs")}
             className="btn-primary mt-8 w-full"
           >
             <IconLock size={18} />
@@ -411,6 +491,80 @@ export function VideoChat() {
           <Link href="/" className="mt-4 inline-block text-sm text-white/45 hover:text-white">
             Back home
           </Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (gate === "prefs") {
+    return (
+      <main className="chat-shell flex min-h-dvh items-center justify-center px-5 py-10">
+        <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold">
+            Match prefs
+          </h1>
+          <p className="mt-2 text-sm text-white/55">
+            Filters apply for the first few seconds, then widen so you still get matches.
+          </p>
+
+          <div className="mt-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/40">I am</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {GENDER_OPTIONS.map((opt) => (
+                <Chip
+                  key={opt.value}
+                  active={prefs.gender === opt.value}
+                  onClick={() => updatePrefs({ ...prefs, gender: opt.value as Gender })}
+                >
+                  {opt.label}
+                </Chip>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/40">
+              Looking for
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {LOOKING_FOR_OPTIONS.map((opt) => (
+                <Chip
+                  key={opt.value}
+                  active={prefs.lookingFor === opt.value}
+                  onClick={() =>
+                    updatePrefs({ ...prefs, lookingFor: opt.value as PrefGender })
+                  }
+                >
+                  {opt.label}
+                </Chip>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/40">
+              Interests (max 5)
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {INTEREST_OPTIONS.map((interest) => (
+                <Chip
+                  key={interest}
+                  active={prefs.interests.includes(interest)}
+                  onClick={() => toggleInterest(interest)}
+                >
+                  {interest}
+                </Chip>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setGate("camera")}
+            className="btn-primary mt-8 w-full"
+          >
+            Continue to camera
+          </button>
         </div>
       </main>
     );
@@ -463,7 +617,13 @@ export function VideoChat() {
   }
 
   return (
-    <main className="chat-shell flex min-h-dvh flex-col">
+    <main className="chat-shell relative flex min-h-dvh flex-col">
+      {toast && (
+        <div className="absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded-md border border-white/15 bg-black/80 px-4 py-2 text-sm text-white shadow-lg">
+          {toast}
+        </div>
+      )}
+
       <header className="flex items-center justify-between px-4 py-3 sm:px-6">
         <Link href="/" className="flex items-center gap-2">
           <Image src="/camify-icon.png" alt="" width={28} height={28} className="rounded-md" />
@@ -566,14 +726,23 @@ export function VideoChat() {
 
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-center gap-2 px-3 pb-6 sm:justify-between sm:px-6">
         <div className="flex flex-wrap gap-2">
-          <span className="icon-btn cursor-default opacity-90" title="Camera is compulsory">
+          <span className="icon-btn cursor-default opacity-90">
             <IconCamera size={18} className="text-[var(--accent)]" />
             Cam locked
           </span>
-          <span className="icon-btn cursor-default opacity-90" title="Mic is compulsory">
+          <span className="icon-btn cursor-default opacity-90">
             <IconMic size={18} className="text-[var(--accent-2)]" />
             Mic locked
           </span>
+          <button
+            type="button"
+            disabled={status !== "matched"}
+            onClick={() => setShowReport(true)}
+            className="icon-btn disabled:opacity-40"
+          >
+            <IconFlag size={16} className="text-[var(--accent)]" />
+            Report
+          </button>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={skip} className="btn-primary !py-2.5">
@@ -586,6 +755,49 @@ export function VideoChat() {
           </button>
         </div>
       </div>
+
+      {showReport && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 px-5">
+          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0c1522] p-5">
+            <h2 className="font-[family-name:var(--font-display)] text-xl font-bold">
+              Report partner
+            </h2>
+            <p className="mt-2 text-sm text-white/55">
+              Ends the chat and queues you with someone new.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {REPORT_REASONS.map((reason) => (
+                <Chip
+                  key={reason}
+                  active={reportReason === reason}
+                  onClick={() => setReportReason(reason)}
+                >
+                  {reason}
+                </Chip>
+              ))}
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowReport(false)}
+                className="icon-btn flex-1"
+                disabled={reportBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitReport}
+                disabled={reportBusy}
+                className="btn-primary flex-1 disabled:opacity-60"
+              >
+                <IconFlag size={16} />
+                {reportBusy ? "Sending..." : "Submit report"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
