@@ -4,6 +4,8 @@ export type PrefGender = "any" | Gender;
 export type MatchPrefs = {
   gender: Gender;
   lookingFor: PrefGender;
+  country: string;
+  lookingCountry: string;
   interests: string[];
 };
 
@@ -19,6 +21,23 @@ export const LOOKING_FOR_OPTIONS: { value: PrefGender; label: string }[] = [
   { value: "female", label: "Female" },
   { value: "other", label: "Other" },
 ];
+
+export const COUNTRY_OPTIONS = [
+  { code: "ANY", label: "Worldwide" },
+  { code: "IN", label: "India" },
+  { code: "US", label: "United States" },
+  { code: "GB", label: "United Kingdom" },
+  { code: "CA", label: "Canada" },
+  { code: "AU", label: "Australia" },
+  { code: "DE", label: "Germany" },
+  { code: "BR", label: "Brazil" },
+  { code: "PH", label: "Philippines" },
+  { code: "PK", label: "Pakistan" },
+  { code: "BD", label: "Bangladesh" },
+  { code: "AE", label: "UAE" },
+  { code: "SG", label: "Singapore" },
+  { code: "NG", label: "Nigeria" },
+] as const;
 
 export const INTEREST_OPTIONS = [
   "Gaming",
@@ -37,11 +56,13 @@ export const INTEREST_OPTIONS = [
   "Other",
 ] as const;
 
-const STORAGE_KEY = "camify_match_prefs_v1";
+const STORAGE_KEY = "camify_match_prefs_v2";
 
 export const defaultPrefs: MatchPrefs = {
   gender: "other",
   lookingFor: "any",
+  country: "ANY",
+  lookingCountry: "ANY",
   interests: [],
 };
 
@@ -54,6 +75,8 @@ export function loadPrefs(): MatchPrefs {
     return {
       gender: parsed.gender ?? defaultPrefs.gender,
       lookingFor: parsed.lookingFor ?? defaultPrefs.lookingFor,
+      country: parsed.country ?? defaultPrefs.country,
+      lookingCountry: parsed.lookingCountry ?? defaultPrefs.lookingCountry,
       interests: Array.isArray(parsed.interests)
         ? parsed.interests.slice(0, 5)
         : [],
@@ -71,10 +94,11 @@ export function savePrefs(prefs: MatchPrefs) {
 export function prefsToSearchPayload(prefs: MatchPrefs) {
   return {
     gender: prefs.gender,
+    country: prefs.country === "ANY" ? undefined : prefs.country,
     interests: prefs.interests,
     preferences: {
       gender: prefs.lookingFor,
-      country: "ANY" as const,
+      country: prefs.lookingCountry || "ANY",
     },
   };
 }

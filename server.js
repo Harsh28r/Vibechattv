@@ -11,6 +11,7 @@ import session from 'express-session';
 import geoip from 'geoip-lite';
 import connectDB from './config/database.js';
 import MatchingQueue from './utils/MatchingQueue.js';
+import InviteRooms from './utils/InviteRooms.js';
 import ChatSession from './models/ChatSession.js';
 import User from './models/User.js';
 import Report from './models/Report.js';
@@ -101,68 +102,51 @@ app.use('/api/moderation', moderationRoutes);
 
 // Initialize matching queue
 const matchingQueue = new MatchingQueue();
+const inviteRooms = new InviteRooms();
+
+function emitMatch(user1, user2, user1Data = {}, user2Data = {}) {
+  const tempSessionId = `temp-${Date.now()}-${Math.random()}`;
+  io.to(user1).emit('searching', { message: 'Found someone! Connecting...' });
+  io.to(user2).emit('searching', { message: 'Found someone! Connecting...' });
+  io.to(user1).emit('match-found', {
+    partnerId: user2,
+    sessionId: tempSessionId,
+    partnerCountry: user2Data?.country || 'Unknown',
+    room: false,
+  });
+  io.to(user2).emit('match-found', {
+    partnerId: user1,
+    sessionId: tempSessionId,
+    partnerCountry: user1Data?.country || 'Unknown',
+    room: false,
+  });
+
+  setImmediate(async () => {
+    try {
+      await User.updateMany(
+        { socketId: { $in: [user1, user2] } },
+        { inChat: true, partnerId: user1 }
+      );
+      await ChatSession.create({
+        user1,
+        user2,
+        startTime: Date.now(),
+      });
+    } catch (error) {
+      console.error('Error saving match to database:', error);
+    }
+  });
+}
 
 // Auto-retry matching for waiting users every 1.5 seconds
-setInterval(async () => {
-  const waitingUsers = Array.from(matchingQueue.waitingUsers.entries());
-  
-  for (const [socketId, userData] of waitingUsers) {
-    // Skip if recently tried
-    if (Date.now() - userData.lastMatchAttempt < 1000) continue;
-    
-    const result = matchingQueue.findMatch(socketId, true);
-    
-    if (result.matched) {
-      const { user1, user2 } = result;
-      
-      console.log(`⚡ Auto-matched: ${user1} <-> ${user2}`);
-      
-      // Notify users
-      io.to(user1).emit('searching', { message: 'Found someone! Connecting...' });
-      io.to(user2).emit('searching', { message: 'Found someone! Connecting...' });
-      
-      // Get user data from queue (fast, no DB query!)
-      const user1QueueData = matchingQueue.waitingUsers.get(user1) || {};
-      const user2QueueData = matchingQueue.waitingUsers.get(user2) || {};
-      
-      // Notify both users IMMEDIATELY (no database delay!)
-      const tempSessionId = `temp-${Date.now()}-${Math.random()}`;
-      
-      io.to(user1).emit('match-found', { 
-        partnerId: user2, 
-        sessionId: tempSessionId,
-        partnerCountry: user2QueueData?.country || 'Unknown'
-      });
-      io.to(user2).emit('match-found', { 
-        partnerId: user1, 
-        sessionId: tempSessionId,
-        partnerCountry: user1QueueData?.country || 'Unknown'
-      });
-      
-      console.log(`💑 Auto-match: ${user1} <-> ${user2}`);
-
-      // Update database asynchronously (non-blocking)
-      setImmediate(async () => {
-        try {
-          await User.updateMany(
-            { socketId: { $in: [user1, user2] } },
-            { inChat: true, partnerId: user1 }
-          );
-
-          const session = await ChatSession.create({
-            user1,
-            user2,
-            startTime: Date.now()
-          });
-
-          console.log(`💾 Auto-match session saved: ${session._id}`);
-        } catch (error) {
-          console.error('Error saving auto-match to database:', error);
-        }
-      });
-    }
+setInterval(() => {
+  const { results } = matchingQueue.retryWaitingUsers();
+  for (const result of results) {
+    const { user1, user2, user1Data, user2Data } = result;
+    console.log(`⚡ Auto-matched: ${user1} <-> ${user2}`);
+    emitMatch(user1, user2, user1Data, user2Data);
   }
-}, 1500); // Check every 1.5 seconds for super fast matching
+}, 1500);
 
 // Track active connections
 let activeConnections = 0;
@@ -185,6 +169,31 @@ app.get('/api/stats', (req, res) => {
     activeConnections,
     maxConnections: MAX_CONNECTIONS
   });
+});
+
+// ICE servers for WebRTC (STUN + optional TURN)
+app.get('/api/ice', (req, res) => {
+  const iceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ];
+
+  const turnUrls = (process.env.TURN_URLS || '')
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean);
+  const turnUsername = process.env.TURN_USERNAME;
+  const turnCredential = process.env.TURN_CREDENTIAL;
+
+  if (turnUrls.length && turnUsername && turnCredential) {
+    iceServers.push({
+      urls: turnUrls,
+      username: turnUsername,
+      credential: turnCredential,
+    });
+  }
+
+  res.json({ iceServers });
 });
 
 // Socket.IO Connection Handling
@@ -297,70 +306,25 @@ io.on('connection', async (socket) => {
       ).catch(err => console.error('Database update error:', err));
 
       if (result.matched) {
-        // Match found! Connect immediately for fast experience
-        const { user1, user2 } = result;
-        
+        const { user1, user2, user1Data, user2Data } = result;
         const stats = matchingQueue.getStats();
         console.log(`⚡ Instant match: ${user1} <-> ${user2}`);
         console.log(`📊 Queue Stats - Waiting: ${stats.waitingUsers}, Active Chats: ${stats.activeChats}`);
-        
-        // Notify users they're being matched (no delay!)
-        io.to(user1).emit('searching', { message: 'Found someone! Connecting...' });
-        io.to(user2).emit('searching', { message: 'Found someone! Connecting...' });
-        
-        // Get user data from queue (fast, no DB query needed!)
-        const user1Data = matchingQueue.waitingUsers.get(user1) || matchingQueue.activeChats.get(user1) || {};
-        const user2Data = matchingQueue.waitingUsers.get(user2) || matchingQueue.activeChats.get(user2) || {};
-        
-        // Notify both users IMMEDIATELY (no database delay!)
-        const tempSessionId = `temp-${Date.now()}-${Math.random()}`;
-        
-        io.to(user1).emit('match-found', { 
-          partnerId: user2, 
-          sessionId: tempSessionId,
-          partnerCountry: user2Data?.country || 'Unknown'
-        });
-        io.to(user2).emit('match-found', { 
-          partnerId: user1, 
-          sessionId: tempSessionId,
-          partnerCountry: user1Data?.country || 'Unknown'
-        });
-
-        console.log(`💑 Match created: ${user1} <-> ${user2}`);
-        
-        // Update database asynchronously (non-blocking, happens after notification)
-        setImmediate(async () => {
-          try {
-            // Update both users in database
-            await User.updateMany(
-              { socketId: { $in: [user1, user2] } },
-              { inChat: true, partnerId: user1 }
-            );
-
-            // Create chat session
-            const session = await ChatSession.create({
-              user1,
-              user2,
-              startTime: Date.now()
-            });
-
-            // Update session ID if needed (optional - temp ID works fine)
-            console.log(`💾 Session saved to DB: ${session._id}`);
-          } catch (error) {
-            console.error('Error saving match to database:', error);
-            // Don't fail the match - DB is just for logging
-          }
-        });
+        emitMatch(user1, user2, user1Data, user2Data);
       } else {
         const stats = matchingQueue.getStats();
-        console.log(`⏰ ${socket.id} waiting in queue. Total waiting: ${stats.waitingUsers}`);
-        console.log(`📊 Current waiting users:`, Array.from(matchingQueue.waitingUsers.keys()));
-        
-        if (stats.waitingUsers === 1) {
-          console.log(`ℹ️ Only 1 user in queue - need another user to match`);
-        }
-        
-        socket.emit('searching', { message: 'Searching for someone...' });
+        const level = result.level || 'strict';
+        console.log(`⏰ ${socket.id} waiting (${level}). Total waiting: ${stats.waitingUsers}`);
+        socket.emit('searching', {
+          message:
+            level === 'strict'
+              ? 'Searching preferred matches...'
+              : level === 'soft'
+                ? 'Widening filters...'
+                : 'Searching anyone nearby...',
+          level,
+          waitTime: result.waitTime,
+        });
       }
     } catch (error) {
       console.error('❌ Error in start-search:', error);
@@ -373,6 +337,69 @@ io.on('connection', async (socket) => {
   socket.on('webrtc-offer', ({ offer, to }) => {
     console.log(`📞 Sending offer from ${socket.id} to ${to}`);
     io.to(to).emit('webrtc-offer', { offer, from: socket.id });
+  });
+
+  // Private invite room
+  socket.on('create-room', () => {
+    try {
+      matchingQueue.removeFromQueue(socket.id);
+      const room = inviteRooms.create(socket.id);
+      socket.emit('room-created', {
+        code: room.code,
+        linkPath: `/chat?room=${room.code}`,
+      });
+      socket.emit('searching', { message: 'Invite created — waiting for friend...' });
+    } catch (error) {
+      console.error('create-room error:', error);
+      socket.emit('error', { message: 'Failed to create room' });
+    }
+  });
+
+  socket.on('join-room', ({ code }) => {
+    try {
+      matchingQueue.removeFromQueue(socket.id);
+      const result = inviteRooms.join(code, socket.id);
+      if (!result.ok) {
+        socket.emit('room-error', { message: result.message });
+        return;
+      }
+
+      const { room } = result;
+      matchingQueue.pairDirect(room.hostId, room.guestId);
+
+      const tempSessionId = `room-${room.code}-${Date.now()}`;
+      io.to(room.hostId).emit('match-found', {
+        partnerId: room.guestId,
+        sessionId: tempSessionId,
+        partnerCountry: 'Invite',
+        room: true,
+        roomCode: room.code,
+      });
+      io.to(room.guestId).emit('match-found', {
+        partnerId: room.hostId,
+        sessionId: tempSessionId,
+        partnerCountry: 'Invite',
+        room: true,
+        roomCode: room.code,
+      });
+
+      socket.emit('room-joined', { code: room.code });
+    } catch (error) {
+      console.error('join-room error:', error);
+      socket.emit('room-error', { message: 'Failed to join room' });
+    }
+  });
+
+  socket.on('leave-room', () => {
+    const left = inviteRooms.leave(socket.id);
+    if (left?.otherId) {
+      io.to(left.otherId).emit('partner-disconnected', {
+        reason: left.closed ? 'Host closed the room' : 'Friend left the room',
+      });
+      matchingQueue.cleanup(left.otherId);
+    }
+    matchingQueue.cleanup(socket.id);
+    socket.emit('room-left');
   });
 
   // WebRTC Signaling: Answer
@@ -628,19 +655,24 @@ io.on('connection', async (socket) => {
       activeConnections--;
       console.log(`🔌 Disconnected: ${socket.id} | Total: ${activeConnections}`);
 
+      const roomLeft = inviteRooms.cleanup(socket.id);
       const partnerId = matchingQueue.cleanup(socket.id);
-      
-      if (partnerId) {
-        io.to(partnerId).emit('partner-disconnected', {
+      const notifyId = partnerId || roomLeft?.otherId;
+
+      if (notifyId) {
+        io.to(notifyId).emit('partner-disconnected', {
           reason: 'Partner disconnected'
         });
         
         await User.findOneAndUpdate(
-          { socketId: partnerId },
+          { socketId: notifyId },
           { inChat: false, partnerId: null }
         );
 
-        await endChatSession(socket.id, partnerId);
+        await endChatSession(socket.id, notifyId);
+        if (roomLeft?.otherId && roomLeft.otherId !== partnerId) {
+          matchingQueue.cleanup(roomLeft.otherId);
+        }
       }
 
       // Remove from database

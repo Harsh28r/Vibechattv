@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { VideoChat } from "@/components/VideoChat";
 import { siteConfig } from "@/lib/site";
 
@@ -10,5 +11,15 @@ export const metadata: Metadata = {
 };
 
 export default function ChatPage() {
-  return <VideoChat />;
+  return (
+    <Suspense
+      fallback={
+        <main className="chat-shell flex min-h-dvh items-center justify-center text-white/70">
+          Loading chat...
+        </main>
+      }
+    >
+      <VideoChat />
+    </Suspense>
+  );
 }

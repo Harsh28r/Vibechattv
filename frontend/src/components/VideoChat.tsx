@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   IconCamera,
@@ -11,10 +12,14 @@ import {
   IconSend,
   IconSkip,
   IconStop,
+  IconUsers,
+  IconLink,
 } from "@/components/Icons";
+import { getIceServers } from "@/lib/ice";
 import { disconnectSocket, getSocket } from "@/lib/socket";
 import { siteConfig } from "@/lib/site";
 import {
+  COUNTRY_OPTIONS,
   GENDER_OPTIONS,
   INTEREST_OPTIONS,
   LOOKING_FOR_OPTIONS,
@@ -41,11 +46,6 @@ type Gate = "age" | "prefs" | "camera" | "live";
 
 type ChatLine = { id: string; from: "me" | "partner"; text: string };
 
-const iceServers: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
-
 function Chip({
   active,
   children,
@@ -71,6 +71,9 @@ function Chip({
 }
 
 export function VideoChat() {
+  const searchParams = useSearchParams();
+  const roomFromUrl = (searchParams.get("room") || "").trim().toUpperCase();
+
   const [gate, setGate] = useState<Gate>("age");
   const [status, setStatus] = useState<Status>("idle");
   const [statusMsg, setStatusMsg] = useState("Ready when you are.");
@@ -84,8 +87,15 @@ export function VideoChat() {
   const [reportReason, setReportReason] = useState<string>(REPORT_REASONS[0]);
   const [reportBusy, setReportBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [inviteCode, setInviteCode] = useState<string | null>(roomFromUrl || null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [mode, setMode] = useState<"random" | "host" | "guest">(
+    roomFromUrl ? "guest" : "random"
+  );
 
   const prefsRef = useRef<MatchPrefs>(defaultPrefs);
+  const modeRef = useRef<"random" | "host" | "guest">(roomFromUrl ? "guest" : "random");
+  const inviteCodeRef = useRef<string | null>(roomFromUrl || null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -106,6 +116,14 @@ export function VideoChat() {
     prefsRef.current = next;
     savePrefs(next);
   };
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    inviteCodeRef.current = inviteCode;
+  }, [inviteCode]);
 
   const attachLocalPreview = useCallback((stream: MediaStream) => {
     [localVideoRef.current, previewVideoRef.current].forEach((el) => {
@@ -181,7 +199,7 @@ export function VideoChat() {
       partnerIdRef.current = partnerId;
       politeRef.current = !isInitiator;
 
-      const pc = new RTCPeerConnection({ iceServers });
+      const pc = new RTCPeerConnection({ iceServers: await getIceServers() });
       pcRef.current = pc;
 
       const stream = await ensureLocalMedia();
@@ -225,8 +243,25 @@ export function VideoChat() {
   );
 
   const emitSearch = useCallback(() => {
-    getSocket().emit("start-search", prefsToSearchPayload(prefsRef.current));
+    const socket = getSocket();
+    if (modeRef.current === "guest" && inviteCodeRef.current) {
+      socket.emit("join-room", { code: inviteCodeRef.current });
+      return;
+    }
+    if (modeRef.current === "host") {
+      // waiting for friend — already created room
+      return;
+    }
+    socket.emit("start-search", prefsToSearchPayload(prefsRef.current));
   }, []);
+
+  const createInvite = () => {
+    const socket = getSocket();
+    setMode("host");
+    modeRef.current = "host";
+    if (!socket.connected) socket.connect();
+    socket.emit("create-room");
+  };
 
   const enableCamera = async () => {
     setCamLoading(true);
@@ -250,8 +285,36 @@ export function VideoChat() {
 
     const onConnect = () => {
       setStatus("searching");
+      if (modeRef.current === "host") {
+        setStatusMsg("Creating invite...");
+        socket.emit("create-room");
+        return;
+      }
+      if (modeRef.current === "guest" && inviteCodeRef.current) {
+        setStatusMsg("Joining invite...");
+        socket.emit("join-room", { code: inviteCodeRef.current });
+        return;
+      }
       setStatusMsg("Searching for someone...");
       emitSearch();
+    };
+
+    const onRoomCreated = (payload: { code: string; linkPath: string }) => {
+      setInviteCode(payload.code);
+      inviteCodeRef.current = payload.code;
+      const link = `${window.location.origin}${payload.linkPath}`;
+      setInviteLink(link);
+      setStatus("searching");
+      setStatusMsg("Waiting for friend to join...");
+      setToast("Invite link ready — share it");
+      setTimeout(() => setToast(null), 3000);
+    };
+
+    const onRoomError = (payload: { message?: string }) => {
+      setStatus("error");
+      setStatusMsg(payload.message || "Room error");
+      setToast(payload.message || "Room error");
+      setTimeout(() => setToast(null), 3500);
     };
 
     const onSearching = (payload: { message?: string }) => {
@@ -367,6 +430,8 @@ export function VideoChat() {
     socket.on("connect", onConnect);
     socket.on("searching", onSearching);
     socket.on("match-found", onMatch);
+    socket.on("room-created", onRoomCreated);
+    socket.on("room-error", onRoomError);
     socket.on("webrtc-offer", onOffer);
     socket.on("webrtc-answer", onAnswer);
     socket.on("ice-candidate", onIce);
@@ -394,6 +459,8 @@ export function VideoChat() {
       socket.off("connect", onConnect);
       socket.off("searching", onSearching);
       socket.off("match-found", onMatch);
+      socket.off("room-created", onRoomCreated);
+      socket.off("room-error", onRoomError);
       socket.off("webrtc-offer", onOffer);
       socket.off("webrtc-answer", onAnswer);
       socket.off("ice-candidate", onIce);
@@ -482,7 +549,7 @@ export function VideoChat() {
           </p>
           <button
             type="button"
-            onClick={() => setGate("prefs")}
+            onClick={() => setGate(roomFromUrl ? "camera" : "prefs")}
             className="btn-primary mt-8 w-full"
           >
             <IconLock size={18} />
@@ -543,6 +610,40 @@ export function VideoChat() {
 
           <div className="mt-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-white/40">
+              I am from
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {COUNTRY_OPTIONS.filter((c) => c.code !== "ANY").map((opt) => (
+                <Chip
+                  key={opt.code}
+                  active={prefs.country === opt.code}
+                  onClick={() => updatePrefs({ ...prefs, country: opt.code })}
+                >
+                  {opt.label}
+                </Chip>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/40">
+              Prefer country
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {COUNTRY_OPTIONS.map((opt) => (
+                <Chip
+                  key={opt.code}
+                  active={prefs.lookingCountry === opt.code}
+                  onClick={() => updatePrefs({ ...prefs, lookingCountry: opt.code })}
+                >
+                  {opt.label}
+                </Chip>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/40">
               Interests (max 5)
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -558,13 +659,32 @@ export function VideoChat() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setGate("camera")}
-            className="btn-primary mt-8 w-full"
-          >
-            Continue to camera
-          </button>
+          <div className="mt-8 grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("random");
+                modeRef.current = "random";
+                setGate("camera");
+              }}
+              className="btn-primary w-full"
+            >
+              <IconUsers size={18} />
+              Random chat
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("host");
+                modeRef.current = "host";
+                setGate("camera");
+              }}
+              className="icon-btn w-full !py-3.5"
+            >
+              <IconLink size={18} />
+              Invite a friend
+            </button>
+          </div>
         </div>
       </main>
     );
@@ -743,6 +863,26 @@ export function VideoChat() {
             <IconFlag size={16} className="text-[var(--accent)]" />
             Report
           </button>
+          {inviteLink && (
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => {
+                navigator.clipboard?.writeText(inviteLink);
+                setToast("Invite link copied");
+                setTimeout(() => setToast(null), 2000);
+              }}
+            >
+              <IconLink size={16} />
+              Copy invite
+            </button>
+          )}
+          {mode === "random" && status === "searching" && (
+            <button type="button" className="icon-btn" onClick={createInvite}>
+              <IconLink size={16} />
+              Invite instead
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={skip} className="btn-primary !py-2.5">
