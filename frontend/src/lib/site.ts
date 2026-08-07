@@ -3,7 +3,7 @@ export const siteConfig = {
   url: process.env.NEXT_PUBLIC_SITE_URL || "https://camify.fun",
   description:
     "Free random video chat with strangers. Instant match, skip anytime — a modern Omegle alternative.",
-  tagline: "Talk to strangers. Instantly.",
+  tagline: "Real faces. Instant strangers.",
   apiUrl: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000",
   socketUrl: process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5000",
 };

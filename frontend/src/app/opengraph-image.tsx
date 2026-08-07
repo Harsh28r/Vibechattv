@@ -23,7 +23,7 @@ export default function OgImage() {
       >
         <div style={{ fontSize: 72, fontWeight: 800 }}>{siteConfig.name}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 48, fontWeight: 700 }}>Talk to strangers. Instantly.</div>
+          <div style={{ fontSize: 48, fontWeight: 700 }}>Real faces. Instant strangers.</div>
           <div style={{ fontSize: 28, opacity: 0.8 }}>
             Free random video chat · Omegle alternative
           </div>

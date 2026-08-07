@@ -35,6 +35,10 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "/",
   },
+  icons: {
+    icon: "/camify-icon.png",
+    apple: "/camify-icon.png",
+  },
   openGraph: {
     type: "website",
     locale: "en_US",

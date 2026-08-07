@@ -34,19 +34,10 @@ export function OnlineCount() {
     };
   }, []);
 
-  if (count === null) {
-    return (
-      <span className="inline-flex items-center gap-2 text-sm text-[var(--muted)]">
-        <span className="pulse-dot size-2 rounded-full bg-[var(--accent-2)]" />
-        Live matching online
-      </span>
-    );
-  }
-
   return (
     <span className="inline-flex items-center gap-2 text-sm text-[var(--muted)]">
       <span className="pulse-dot size-2 rounded-full bg-[var(--accent-2)]" />
-      {count.toLocaleString()}+ online now
+      {count === null ? "Live matching online" : `${count.toLocaleString()}+ online now`}
     </span>
   );
 }

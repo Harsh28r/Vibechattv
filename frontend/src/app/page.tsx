@@ -1,80 +1,125 @@
+import Image from "next/image";
 import Link from "next/link";
 import { OnlineCount } from "@/components/OnlineCount";
 import { SiteNav } from "@/components/SiteNav";
+import {
+  IconBolt,
+  IconCamera,
+  IconShield,
+  IconSkip,
+  IconUsers,
+} from "@/components/Icons";
 import { siteConfig } from "@/lib/site";
+
+const features = [
+  {
+    icon: IconBolt,
+    title: "Instant match",
+    body: "Hit go. Land face-to-face in seconds — no signup theater.",
+  },
+  {
+    icon: IconCamera,
+    title: "Camera required",
+    body: "Real faces only. Cam stays on so the room stays honest.",
+  },
+  {
+    icon: IconSkip,
+    title: "Skip hard",
+    body: "Vibe dead? Next stranger. One tap. Zero drama.",
+  },
+  {
+    icon: IconShield,
+    title: "Peer video",
+    body: "WebRTC P2P streams. We signal the match — not the footage.",
+  },
+];
 
 export default function HomePage() {
   return (
-    <main className="relative min-h-dvh overflow-hidden hero-atmosphere">
-      <div className="pointer-events-none absolute inset-0 hero-grid" aria-hidden />
+    <main className="relative min-h-dvh overflow-hidden hero-atmosphere text-white">
+      <div className="pointer-events-none absolute inset-0 hero-noise" aria-hidden />
       <SiteNav />
 
-      <section className="relative z-10 mx-auto flex min-h-dvh max-w-6xl flex-col justify-center px-5 pb-16 pt-28 sm:px-8 lg:flex-row lg:items-center lg:gap-10 lg:pt-20">
-        <div className="max-w-xl lg:max-w-lg">
-          <p className="animate-fade-up font-[family-name:var(--font-display)] text-5xl font-extrabold tracking-tight text-[var(--ink)] sm:text-6xl md:text-7xl">
+      <section className="relative z-10 mx-auto grid min-h-dvh max-w-6xl items-center gap-10 px-5 pb-16 pt-28 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:pt-16">
+        <div>
+          <div className="animate-fade-up inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent-2)]">
+            <span className="pulse-dot size-1.5 rounded-full bg-[var(--accent-2)]" />
+            Live stranger signal
+          </div>
+
+          <p className="animate-fade-up mt-5 font-[family-name:var(--font-display)] text-5xl font-extrabold leading-[0.95] tracking-tight sm:text-6xl md:text-7xl">
             {siteConfig.name}
           </p>
-          <h1 className="animate-fade-up-delay mt-4 max-w-[18ch] text-2xl font-semibold leading-snug text-[var(--ink)] sm:text-3xl">
+
+          <h1 className="animate-fade-up-delay mt-5 max-w-[14ch] font-[family-name:var(--font-display)] text-3xl font-bold leading-tight text-white sm:text-4xl">
             {siteConfig.tagline}
           </h1>
-          <p className="animate-fade-up-delay-2 mt-4 max-w-[36ch] text-base leading-relaxed text-[var(--muted)] sm:text-lg">
-            Free random video chat. Match in seconds, skip anytime — no signup required.
+
+          <p className="animate-fade-up-delay-2 mt-4 max-w-[38ch] text-base leading-relaxed text-[var(--muted)] sm:text-lg">
+            Random video chat built for people who want face time — not fake profiles.
+            Camera on. Match fast. Skip free.
           </p>
 
           <div className="animate-fade-up-delay-2 mt-8 flex flex-wrap items-center gap-4">
-            <Link
-              href="/chat"
-              className="inline-flex items-center justify-center rounded-md bg-[var(--accent)] px-7 py-3.5 text-base font-semibold text-white shadow-[0_12px_30px_-12px_rgba(255,90,43,0.8)] transition hover:-translate-y-0.5 hover:brightness-110"
-            >
-              Start chatting
+            <Link href="/chat" className="btn-primary text-base">
+              <IconCamera size={20} />
+              Start with camera
             </Link>
             <OnlineCount />
           </div>
+
+          <p className="mt-5 flex items-center gap-2 text-xs text-[var(--muted)]">
+            <IconUsers size={14} />
+            18+ · Camera compulsory · No account needed
+          </p>
         </div>
 
-        <div className="animate-float relative mt-14 aspect-[4/5] w-full max-w-md self-center overflow-hidden rounded-[2rem] lg:mt-0 lg:max-w-lg">
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                "linear-gradient(145deg, #0c1522 0%, #163447 45%, #1fa7a0 100%)",
-            }}
-          />
-          <div className="absolute inset-0 opacity-40 mix-blend-screen"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.35), transparent 40%), radial-gradient(circle at 70% 70%, rgba(255,90,43,0.45), transparent 45%)",
-            }}
-          />
-          <div className="absolute inset-6 grid grid-rows-2 gap-3">
-            <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur-sm" />
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur-sm" />
-              <div className="rounded-2xl border border-white/10 bg-[var(--accent)]/80" />
+        <div className="animate-float relative mx-auto aspect-square w-full max-w-md lg:max-w-none">
+          <div className="absolute inset-[8%] rounded-[2rem] border border-white/10 bg-[var(--steel)]/80" />
+          <div className="absolute inset-[14%] overflow-hidden rounded-[1.6rem] bg-black/50">
+            <div
+              className="absolute inset-0 opacity-80"
+              style={{
+                background:
+                  "radial-gradient(circle at 40% 35%, rgba(46,196,182,0.35), transparent 45%), radial-gradient(circle at 70% 70%, rgba(255,90,43,0.4), transparent 40%), linear-gradient(160deg,#0b1220,#1a2740)",
+              }}
+            />
+            <div className="scan-line" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="animate-shutter relative">
+                <div className="spin-ring absolute -inset-6 rounded-full border border-dashed border-white/20" />
+                <Image
+                  src="/camify-icon.png"
+                  alt="Camify camera"
+                  width={180}
+                  height={180}
+                  className="relative rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
+                  priority
+                />
+              </div>
             </div>
+            <p className="absolute bottom-6 left-6 right-6 font-[family-name:var(--font-display)] text-2xl font-bold leading-tight">
+              Face forward.
+              <br />
+              <span className="text-[var(--accent)]">No filters.</span>
+            </p>
           </div>
-          <p className="absolute bottom-8 left-8 right-8 font-[family-name:var(--font-display)] text-2xl font-bold text-white">
-            Face to face.<br />World wide.
-          </p>
         </div>
       </section>
 
-      <section className="relative z-10 border-t border-[var(--line)] bg-white/40 px-5 py-16 backdrop-blur-sm sm:px-8">
+      <section className="relative z-10 border-t border-white/10 bg-black/25 px-5 py-16 backdrop-blur-sm sm:px-8">
         <div className="mx-auto max-w-6xl">
-          <h2 className="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight">
-            Why people open {siteConfig.name}
+          <h2 className="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight sm:text-4xl">
+            Built different
           </h2>
           <p className="mt-3 max-w-xl text-[var(--muted)]">
-            Instant matching over WebRTC. Text while you talk. Skip when the vibe dies.
+            A creative stranger platform — sharp UI, compulsory cam, zero fluff.
           </p>
-          <ul className="mt-10 grid gap-8 sm:grid-cols-3">
-            {[
-              ["Instant match", "Join the queue and connect as soon as someone else is free."],
-              ["Private by default", "Peer-to-peer video. We signal — we don’t sit in the middle of your stream."],
-              ["Skip freely", "Next stranger is one tap away. No awkward exit required."],
-            ].map(([title, body]) => (
-              <li key={title}>
-                <h3 className="text-lg font-semibold">{title}</h3>
+          <ul className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {features.map(({ icon: Icon, title, body }) => (
+              <li key={title} className="border-t border-white/15 pt-5">
+                <Icon size={26} className="text-[var(--accent)]" />
+                <h3 className="mt-4 text-lg font-semibold">{title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{body}</p>
               </li>
             ))}
@@ -82,12 +127,19 @@ export default function HomePage() {
         </div>
       </section>
 
-      <footer className="border-t border-[var(--line)] px-5 py-8 text-sm text-[var(--muted)] sm:px-8">
+      <footer className="border-t border-white/10 px-5 py-8 text-sm text-[var(--muted)] sm:px-8">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-          <span>© {new Date().getFullYear()} {siteConfig.name}. 18+ only.</span>
+          <span className="flex items-center gap-2">
+            <Image src="/camify-icon.png" alt="" width={22} height={22} className="rounded" />
+            © {new Date().getFullYear()} {siteConfig.name}. 18+ only.
+          </span>
           <div className="flex gap-4">
-            <Link href="/random-video-chat">Random video chat</Link>
-            <Link href="/omegle-alternative">Omegle alternative</Link>
+            <Link href="/random-video-chat" className="hover:text-white">
+              Random video chat
+            </Link>
+            <Link href="/omegle-alternative" className="hover:text-white">
+              Omegle alternative
+            </Link>
           </div>
         </div>
       </footer>

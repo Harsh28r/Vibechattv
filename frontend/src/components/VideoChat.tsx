@@ -1,7 +1,17 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  IconCamera,
+  IconLock,
+  IconMic,
+  IconMicOff,
+  IconSend,
+  IconSkip,
+  IconStop,
+} from "@/components/Icons";
 import { disconnectSocket, getSocket } from "@/lib/socket";
 import { siteConfig } from "@/lib/site";
 
@@ -14,6 +24,8 @@ type Status =
   | "error"
   | "banned";
 
+type Gate = "age" | "camera" | "live";
+
 type ChatLine = { id: string; from: "me" | "partner"; text: string };
 
 const iceServers: RTCIceServer[] = [
@@ -22,22 +34,32 @@ const iceServers: RTCIceServer[] = [
 ];
 
 export function VideoChat() {
+  const [gate, setGate] = useState<Gate>("age");
   const [status, setStatus] = useState<Status>("idle");
   const [statusMsg, setStatusMsg] = useState("Ready when you are.");
   const [partnerCountry, setPartnerCountry] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatLine[]>([]);
   const [draft, setDraft] = useState("");
-  const [ageOk, setAgeOk] = useState(false);
   const [muted, setMuted] = useState(false);
-  const [camOff, setCamOff] = useState(false);
+  const [camError, setCamError] = useState<string | null>(null);
+  const [camLoading, setCamLoading] = useState(false);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const partnerIdRef = useRef<string | null>(null);
   const makingOfferRef = useRef(false);
   const politeRef = useRef(false);
+
+  const attachLocalPreview = useCallback((stream: MediaStream) => {
+    [localVideoRef.current, previewVideoRef.current].forEach((el) => {
+      if (!el) return;
+      el.srcObject = stream;
+      el.play().catch(() => undefined);
+    });
+  }, []);
 
   const cleanupPeer = useCallback(() => {
     pcRef.current?.close();
@@ -53,21 +75,40 @@ export function VideoChat() {
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (previewVideoRef.current) previewVideoRef.current.srcObject = null;
   }, []);
 
   const ensureLocalMedia = useCallback(async () => {
-    if (localStreamRef.current) return localStreamRef.current;
+    if (localStreamRef.current) {
+      const videoTrack = localStreamRef.current.getVideoTracks()[0];
+      if (videoTrack && videoTrack.readyState === "live") {
+        videoTrack.enabled = true;
+        attachLocalPreview(localStreamRef.current);
+        return localStreamRef.current;
+      }
+      stopLocalMedia();
+    }
+
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user" },
+      video: {
+        facingMode: "user",
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
       audio: true,
     });
-    localStreamRef.current = stream;
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
-      await localVideoRef.current.play().catch(() => undefined);
+
+    const videoTrack = stream.getVideoTracks()[0];
+    if (!videoTrack) {
+      stream.getTracks().forEach((t) => t.stop());
+      throw new Error("Camera is required to use Camify.");
     }
+    videoTrack.enabled = true;
+
+    localStreamRef.current = stream;
+    attachLocalPreview(stream);
     return stream;
-  }, []);
+  }, [attachLocalPreview, stopLocalMedia]);
 
   const createPeer = useCallback(
     async (partnerId: string, isInitiator: boolean) => {
@@ -113,15 +154,26 @@ export function VideoChat() {
         }
       };
 
-      if (isInitiator) {
-        // negotiationneeded will fire after tracks are added
-      }
+      void isInitiator;
     },
     [cleanupPeer, ensureLocalMedia]
   );
 
+  const enableCamera = async () => {
+    setCamLoading(true);
+    setCamError(null);
+    try {
+      await ensureLocalMedia();
+      setGate("live");
+    } catch {
+      setCamError("Camera access is compulsory. Allow camera + mic in browser settings, then retry.");
+    } finally {
+      setCamLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (!ageOk) return;
+    if (gate !== "live") return;
 
     const socket = getSocket();
 
@@ -149,10 +201,10 @@ export function VideoChat() {
       const isInitiator = socket.id! < payload.partnerId;
       try {
         await createPeer(payload.partnerId, isInitiator);
-      } catch (err) {
-        console.error(err);
+      } catch {
         setStatus("error");
-        setStatusMsg("Camera/mic permission required.");
+        setStatusMsg("Camera required — enable it to keep chatting.");
+        setGate("camera");
       }
     };
 
@@ -255,10 +307,14 @@ export function VideoChat() {
     setStatus("connecting");
     setStatusMsg("Connecting...");
     ensureLocalMedia()
-      .then(() => socket.connect())
+      .then(() => {
+        if (!socket.connected) socket.connect();
+        else onConnect();
+      })
       .catch(() => {
         setStatus("error");
-        setStatusMsg("Allow camera & mic to chat.");
+        setStatusMsg("Camera is compulsory.");
+        setGate("camera");
       });
 
     return () => {
@@ -278,7 +334,7 @@ export function VideoChat() {
       stopLocalMedia();
       disconnectSocket();
     };
-  }, [ageOk, cleanupPeer, createPeer, ensureLocalMedia, stopLocalMedia]);
+  }, [gate, cleanupPeer, createPeer, ensureLocalMedia, stopLocalMedia]);
 
   const skip = () => {
     const socket = getSocket();
@@ -295,7 +351,7 @@ export function VideoChat() {
     disconnectSocket();
     setStatus("idle");
     setStatusMsg("Stopped.");
-    setAgeOk(false);
+    setGate("age");
   };
 
   const sendMessage = (e: FormEvent) => {
@@ -321,37 +377,84 @@ export function VideoChat() {
     setMuted(next);
   };
 
-  const toggleCam = () => {
-    const next = !camOff;
-    localStreamRef.current?.getVideoTracks().forEach((t) => {
-      t.enabled = !next;
-    });
-    setCamOff(next);
-  };
-
-  if (!ageOk) {
+  if (gate === "age") {
     return (
       <main className="chat-shell flex min-h-dvh items-center justify-center px-5">
         <div className="w-full max-w-md text-center">
+          <Image
+            src="/camify-icon.png"
+            alt=""
+            width={72}
+            height={72}
+            className="mx-auto rounded-2xl"
+            priority
+          />
           <Link
             href="/"
-            className="font-[family-name:var(--font-display)] text-3xl font-extrabold text-white"
+            className="mt-4 inline-block font-[family-name:var(--font-display)] text-3xl font-extrabold text-white"
           >
             {siteConfig.name}
           </Link>
-          <p className="mt-6 text-lg text-white/80">
-            You must be 18 or older to use random video chat.
+          <p className="mt-5 text-lg text-white/75">
+            18+ platform. Real faces only — camera is compulsory.
           </p>
           <button
             type="button"
-            onClick={() => setAgeOk(true)}
-            className="mt-8 w-full rounded-md bg-[var(--accent)] px-6 py-3.5 font-semibold text-white hover:brightness-110"
+            onClick={() => setGate("camera")}
+            className="btn-primary mt-8 w-full"
           >
-            I am 18+ — start
+            <IconLock size={18} />
+            I am 18+ — continue
           </button>
-          <Link href="/" className="mt-4 inline-block text-sm text-white/50 hover:text-white">
+          <Link href="/" className="mt-4 inline-block text-sm text-white/45 hover:text-white">
             Back home
           </Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (gate === "camera") {
+    return (
+      <main className="chat-shell flex min-h-dvh items-center justify-center px-5">
+        <div className="w-full max-w-lg">
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+            <div className="relative aspect-video bg-black/50">
+              <video
+                ref={previewVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+              {!localStreamRef.current && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/70">
+                  <IconCamera size={42} className="text-[var(--accent)]" />
+                  <p className="text-sm">Camera preview appears here</p>
+                </div>
+              )}
+            </div>
+            <div className="p-6 text-center">
+              <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold">
+                Camera required
+              </h1>
+              <p className="mt-2 text-sm leading-relaxed text-white/60">
+                No cam-off mode. Enable your camera to enter the match queue.
+              </p>
+              {camError && (
+                <p className="mt-3 text-sm text-[var(--accent)]">{camError}</p>
+              )}
+              <button
+                type="button"
+                onClick={enableCamera}
+                disabled={camLoading}
+                className="btn-primary mt-6 w-full disabled:opacity-60"
+              >
+                <IconCamera size={18} />
+                {camLoading ? "Requesting camera..." : "Allow camera & enter"}
+              </button>
+            </div>
+          </div>
         </div>
       </main>
     );
@@ -360,20 +463,22 @@ export function VideoChat() {
   return (
     <main className="chat-shell flex min-h-dvh flex-col">
       <header className="flex items-center justify-between px-4 py-3 sm:px-6">
-        <Link
-          href="/"
-          className="font-[family-name:var(--font-display)] text-xl font-bold text-white"
-        >
-          {siteConfig.name}
+        <Link href="/" className="flex items-center gap-2">
+          <Image src="/camify-icon.png" alt="" width={28} height={28} className="rounded-md" />
+          <span className="font-[family-name:var(--font-display)] text-xl font-bold text-white">
+            {siteConfig.name}
+          </span>
         </Link>
-        <div className="text-right text-sm text-white/70">
-          <p>{statusMsg}</p>
-          {partnerCountry && <p className="text-white/45">Partner · {partnerCountry}</p>}
+        <div className="text-right text-sm">
+          <p className="font-medium text-white/85">{statusMsg}</p>
+          {partnerCountry && (
+            <p className="text-white/40">Partner · {partnerCountry}</p>
+          )}
         </div>
       </header>
 
-      <div className="relative mx-auto grid w-full max-w-6xl flex-1 gap-3 px-3 pb-3 sm:grid-cols-[1fr_320px] sm:px-6 sm:pb-6">
-        <div className="relative min-h-[50vh] overflow-hidden rounded-2xl bg-black/40 sm:min-h-0">
+      <div className="relative mx-auto grid w-full max-w-6xl flex-1 gap-3 px-3 pb-3 sm:grid-cols-[1fr_300px] sm:px-6 sm:pb-4">
+        <div className="relative min-h-[52vh] overflow-hidden rounded-2xl border border-white/10 bg-black/50 sm:min-h-0">
           <video
             ref={remoteVideoRef}
             autoPlay
@@ -381,8 +486,13 @@ export function VideoChat() {
             className="absolute inset-0 h-full w-full object-cover"
           />
           {status !== "matched" && (
-            <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg-deep)]/60">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#070b14]/70">
+              <div className="spin-ring size-14 rounded-full border border-dashed border-[var(--accent-2)]/50" />
               <p className="animate-fade-up text-lg text-white/80">{statusMsg}</p>
+              <p className="flex items-center gap-1.5 text-xs text-white/40">
+                <IconCamera size={14} className="text-[var(--accent)]" />
+                Your camera is live
+              </p>
             </div>
           )}
           <video
@@ -390,20 +500,29 @@ export function VideoChat() {
             autoPlay
             playsInline
             muted
-            className="absolute bottom-3 right-3 h-28 w-20 rounded-lg object-cover ring-1 ring-white/20 sm:h-36 sm:w-28"
+            className="absolute bottom-3 right-3 h-32 w-24 rounded-xl object-cover ring-2 ring-[var(--accent)]/70 sm:h-40 sm:w-28"
           />
+          <span className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/80">
+            <IconCamera size={12} className="text-[var(--accent)]" />
+            Cam on
+          </span>
         </div>
 
-        <aside className="flex min-h-[220px] flex-col rounded-2xl border border-white/10 bg-white/5">
+        <aside className="flex min-h-[220px] flex-col rounded-2xl border border-white/10 bg-white/[0.03]">
+          <div className="border-b border-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white/40">
+            Text
+          </div>
           <div className="flex-1 space-y-2 overflow-y-auto p-3 text-sm">
             {messages.length === 0 && (
-              <p className="text-white/40">Messages appear here once matched.</p>
+              <p className="text-white/35">Say something once you&apos;re matched.</p>
             )}
             {messages.map((m) => (
               <p
                 key={m.id}
                 className={
-                  m.from === "me" ? "text-right text-[var(--accent-2)]" : "text-white/85"
+                  m.from === "me"
+                    ? "ml-6 rounded-lg bg-[var(--accent)]/20 px-2.5 py-1.5 text-right text-[#ffc3af]"
+                    : "mr-6 rounded-lg bg-white/5 px-2.5 py-1.5 text-white/85"
                 }
               >
                 {m.text}
@@ -414,16 +533,17 @@ export function VideoChat() {
             <input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="Say something..."
+              placeholder="Type a message..."
               disabled={status !== "matched"}
-              className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[var(--accent-2)]"
+              className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/35 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-[var(--accent-2)]"
             />
             <button
               type="submit"
               disabled={status !== "matched"}
-              className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+              className="icon-btn !px-3 disabled:opacity-40"
+              aria-label="Send"
             >
-              Send
+              <IconSend size={18} />
             </button>
           </form>
         </aside>
@@ -434,31 +554,24 @@ export function VideoChat() {
           <button
             type="button"
             onClick={toggleMute}
-            className="rounded-md border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/10"
+            className="icon-btn"
+            data-active={muted}
           >
+            {muted ? <IconMicOff size={18} /> : <IconMic size={18} />}
             {muted ? "Unmute" : "Mute"}
           </button>
-          <button
-            type="button"
-            onClick={toggleCam}
-            className="rounded-md border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/10"
-          >
-            {camOff ? "Cam on" : "Cam off"}
-          </button>
+          <span className="icon-btn cursor-default opacity-90" title="Camera is compulsory">
+            <IconCamera size={18} className="text-[var(--accent)]" />
+            Camera locked on
+          </span>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={skip}
-            className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:brightness-110"
-          >
+          <button type="button" onClick={skip} className="btn-primary !py-2.5">
+            <IconSkip size={18} />
             Next
           </button>
-          <button
-            type="button"
-            onClick={stop}
-            className="rounded-md border border-white/20 px-5 py-2.5 text-sm text-white/80 hover:bg-white/10"
-          >
+          <button type="button" onClick={stop} className="icon-btn">
+            <IconStop size={16} />
             Stop
           </button>
         </div>
