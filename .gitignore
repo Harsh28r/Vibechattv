@@ -8,3 +8,5 @@ build
 # Documentation files (markdown)
 *.md
 
+.vercel
+.env*
