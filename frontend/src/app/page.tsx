@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { OnlineCount } from "@/components/OnlineCount";
+import { SiteFooter } from "@/components/SiteFooter";
 import { SiteNav } from "@/components/SiteNav";
 import {
   IconBolt,
@@ -90,7 +91,7 @@ export default function HomePage() {
                 <div className="spin-ring absolute -inset-6 rounded-full border border-dashed border-white/20" />
                 <Image
                   src="/camify-icon.png"
-                  alt="Camify camera"
+                  alt="Camify free random video chat camera icon"
                   width={180}
                   height={180}
                   className="relative rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
@@ -127,22 +128,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <footer className="border-t border-white/10 px-5 py-8 text-sm text-[var(--muted)] sm:px-8">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-          <span className="flex items-center gap-2">
-            <Image src="/camify-icon.png" alt="" width={22} height={22} className="rounded" />
-            © {new Date().getFullYear()} {siteConfig.name}. 18+ only.
-          </span>
-          <div className="flex gap-4">
-            <Link href="/random-video-chat" className="hover:text-white">
-              Random video chat
-            </Link>
-            <Link href="/omegle-alternative" className="hover:text-white">
-              Omegle alternative
-            </Link>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

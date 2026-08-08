@@ -9,7 +9,7 @@ export function SiteNav() {
         <Link href="/" className="flex items-center gap-2.5">
           <Image
             src="/camify-icon.png"
-            alt=""
+            alt={`${siteConfig.name} logo`}
             width={36}
             height={36}
             className="rounded-lg"
@@ -21,10 +21,22 @@ export function SiteNav() {
         </Link>
         <nav className="flex items-center gap-3 text-sm font-semibold sm:gap-5">
           <Link
+            href="/random-video-chat"
+            className="hidden text-[var(--muted)] hover:text-white lg:inline"
+          >
+            Random chat
+          </Link>
+          <Link
             href="/omegle-alternative"
             className="hidden text-[var(--muted)] hover:text-white sm:inline"
           >
-            Alternative
+            Omegle alt
+          </Link>
+          <Link
+            href="/talk-to-strangers"
+            className="hidden text-[var(--muted)] hover:text-white xl:inline"
+          >
+            Strangers
           </Link>
           <Link href="/chat" className="btn-primary !px-4 !py-2.5 text-sm">
             Go live

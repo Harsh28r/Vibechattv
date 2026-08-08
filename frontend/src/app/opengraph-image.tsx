@@ -1,7 +1,6 @@
 import { ImageResponse } from "next/og";
-import { siteConfig } from "@/lib/site";
 
-export const alt = `${siteConfig.name} — Free random video chat`;
+export const alt = "Camify — Free random video chat";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -21,10 +20,10 @@ export default function OgImage() {
           fontFamily: "sans-serif",
         }}
       >
-        <div style={{ fontSize: 72, fontWeight: 800 }}>{siteConfig.name}</div>
+        <div style={{ fontSize: 72, fontWeight: 800 }}>Camify</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: 48, fontWeight: 700 }}>Real faces. Instant strangers.</div>
-          <div style={{ fontSize: 28, opacity: 0.8 }}>
+          <div style={{ fontSize: 28, opacity: 0.85 }}>
             Free random video chat · Omegle alternative
           </div>
         </div>

@@ -1,8 +1,9 @@
 import type { MetadataRoute } from "next";
+import { seoLinks } from "@/lib/seo";
 import { siteConfig } from "@/lib/site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = siteConfig.url;
+  const base = siteConfig.url.replace(/\/$/, "");
   const now = new Date();
 
   return [
@@ -12,23 +13,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "daily",
       priority: 1,
     },
-    {
-      url: `${base}/omegle-alternative`,
+    ...seoLinks.map((link) => ({
+      url: `${base}${link.href}`,
       lastModified: now,
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
-      url: `${base}/random-video-chat`,
-      lastModified: now,
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
-      url: `${base}/chat`,
-      lastModified: now,
-      changeFrequency: "daily",
-      priority: 0.7,
-    },
+      changeFrequency: "weekly" as const,
+      priority: link.href.includes("omegle") ? 0.9 : 0.85,
+    })),
   ];
 }
