@@ -15,6 +15,7 @@ export function SeoArticle({
   title,
   lead,
   cta = `Try ${siteConfig.name} free`,
+  showCta = true,
   sections,
   relatedHref,
 }: {
@@ -22,6 +23,7 @@ export function SeoArticle({
   title: string;
   lead: string;
   cta?: string;
+  showCta?: boolean;
   sections: Section[];
   relatedHref?: string;
 }) {
@@ -39,10 +41,12 @@ export function SeoArticle({
           {title}
         </h1>
         <p className="mt-5 text-lg leading-relaxed text-[var(--muted)]">{lead}</p>
-        <Link href="/chat" className="btn-primary mt-8">
-          <IconCamera size={18} />
-          {cta}
-        </Link>
+        {showCta && (
+          <Link href="/chat" className="btn-primary mt-8">
+            <IconCamera size={18} />
+            {cta}
+          </Link>
+        )}
 
         <div className="mt-14 space-y-10">
           {sections.map((section) => (
@@ -71,6 +75,11 @@ export function SeoArticle({
                 </Link>
               </li>
             ))}
+            <li>
+              <Link href="/safety" className="hover:text-white">
+                Safety
+              </Link>
+            </li>
           </ul>
         </section>
       </article>

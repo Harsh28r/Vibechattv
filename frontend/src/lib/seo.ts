@@ -7,6 +7,24 @@ export const seoLinks = [
   { href: "/free-video-chat-no-signup", label: "Free video chat (no signup)" },
   { href: "/omegle-alternative", label: "Omegle alternative" },
   { href: "/omegle-alternative-india", label: "Omegle alternative India" },
+  { href: "/ome-tv-alternative", label: "OmeTV alternative" },
+  { href: "/chatroulette-alternative", label: "Chatroulette alternative" },
+] as const;
+
+/** High-intent links for homepage body strip */
+export const exploreLinks = [
+  { href: "/omegle-alternative", label: "Omegle alternative" },
+  { href: "/ome-tv-alternative", label: "OmeTV alternative" },
+  { href: "/talk-to-strangers", label: "Talk to strangers" },
+  { href: "/omegle-alternative-india", label: "India" },
+  { href: "/free-video-chat-no-signup", label: "No signup" },
+  { href: "/safety", label: "Safety" },
+] as const;
+
+export const legalLinks = [
+  { href: "/safety", label: "Safety" },
+  { href: "/privacy", label: "Privacy" },
+  { href: "/terms", label: "Terms" },
 ] as const;
 
 export function faqJsonLd(faqs: { question: string; answer: string }[]) {

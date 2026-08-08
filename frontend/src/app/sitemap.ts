@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { seoLinks } from "@/lib/seo";
+import { legalLinks, seoLinks } from "@/lib/seo";
 import { siteConfig } from "@/lib/site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -17,7 +17,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${base}${link.href}`,
       lastModified: now,
       changeFrequency: "weekly" as const,
-      priority: link.href.includes("omegle") ? 0.9 : 0.85,
+      priority: link.href.includes("omegle") || link.href.includes("ome-tv") ? 0.9 : 0.85,
+    })),
+    ...legalLinks.map((link) => ({
+      url: `${base}${link.href}`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.5,
     })),
   ];
 }

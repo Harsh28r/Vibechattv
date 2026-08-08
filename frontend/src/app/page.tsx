@@ -10,6 +10,7 @@ import {
   IconSkip,
   IconUsers,
 } from "@/components/Icons";
+import { exploreLinks } from "@/lib/seo";
 import { siteConfig } from "@/lib/site";
 
 const features = [
@@ -91,7 +92,7 @@ export default function HomePage() {
                 <div className="spin-ring absolute -inset-6 rounded-full border border-dashed border-white/20" />
                 <Image
                   src="/camify-icon.png"
-                  alt="Camify free random video chat camera icon"
+                  alt="Camify live random video chat interface — camera-forward stranger matching"
                   width={180}
                   height={180}
                   className="relative rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
@@ -122,6 +123,29 @@ export default function HomePage() {
                 <Icon size={26} className="text-[var(--accent)]" />
                 <h3 className="mt-4 text-lg font-semibold">{title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{body}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="relative z-10 border-t border-white/10 px-5 py-14 sm:px-8">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="font-[family-name:var(--font-display)] text-2xl font-bold tracking-tight sm:text-3xl">
+            Explore Camify
+          </h2>
+          <p className="mt-2 max-w-xl text-[var(--muted)]">
+            Guides for Omegle-style chat, regional search, and safer stranger video calls.
+          </p>
+          <ul className="mt-8 flex flex-wrap gap-3">
+            {exploreLinks.map((link) => (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className="inline-flex rounded-md border border-white/15 bg-white/[0.03] px-4 py-2.5 text-sm font-semibold text-white/85 transition hover:border-white/30 hover:bg-white/[0.06] hover:text-white"
+                >
+                  {link.label}
+                </Link>
               </li>
             ))}
           </ul>
