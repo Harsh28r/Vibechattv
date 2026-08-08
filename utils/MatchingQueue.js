@@ -1,13 +1,11 @@
 /**
- * Matching queue with tiered preference relaxation.
- * strict (0–15s) → soft (15–45s) → open (45s+)
+ * Matching queue: prefer preference-compatible peers first.
+ * If no preferred match is waiting, connect immediately with any free person.
  */
 class MatchingQueue {
   constructor() {
     this.waitingUsers = new Map();
     this.activeChats = new Map();
-    this.STRICT_MS = parseInt(process.env.MATCH_STRICT_MS || '15000', 10);
-    this.SOFT_MS = parseInt(process.env.MATCH_SOFT_MS || '45000', 10);
   }
 
   addToQueue(socketId, userData = {}) {
@@ -28,20 +26,9 @@ class MatchingQueue {
     return this.findMatch(socketId);
   }
 
-  getRelaxLevel(waitTime) {
-    if (waitTime < this.STRICT_MS) return 'strict';
-    if (waitTime < this.SOFT_MS) return 'soft';
-    return 'open';
-  }
-
-  findMatch(socketId) {
+  findBestCandidate(socketId, level) {
     const currentUser = this.waitingUsers.get(socketId);
-    if (!currentUser) {
-      return { success: false, message: 'User not in queue' };
-    }
-
-    const waitTime = Date.now() - currentUser.joinedAt;
-    const level = this.getRelaxLevel(waitTime);
+    if (!currentUser) return null;
 
     let bestMatch = null;
     let bestScore = -1;
@@ -56,31 +43,63 @@ class MatchingQueue {
       }
     }
 
-    if (bestMatch) {
-      const user1Data = this.waitingUsers.get(socketId);
-      const user2Data = this.waitingUsers.get(bestMatch);
-      this.waitingUsers.delete(socketId);
-      this.waitingUsers.delete(bestMatch);
-      this.activeChats.set(socketId, bestMatch);
-      this.activeChats.set(bestMatch, socketId);
+    if (!bestMatch) return null;
+    return { bestMatch, bestScore, level };
+  }
 
-      console.log(
-        `✅ Match: ${socketId} <-> ${bestMatch} (score: ${bestScore}, wait: ${waitTime}ms, level: ${level})`
-      );
+  pairUsers(socketId, bestMatch, bestScore, level) {
+    const currentUser = this.waitingUsers.get(socketId);
+    const waitTime = currentUser ? Date.now() - currentUser.joinedAt : 0;
+    const user1Data = this.waitingUsers.get(socketId);
+    const user2Data = this.waitingUsers.get(bestMatch);
+    this.waitingUsers.delete(socketId);
+    this.waitingUsers.delete(bestMatch);
+    this.activeChats.set(socketId, bestMatch);
+    this.activeChats.set(bestMatch, socketId);
 
-      return {
-        success: true,
-        matched: true,
-        user1: socketId,
-        user2: bestMatch,
-        user1Data,
-        user2Data,
-        level,
-      };
+    console.log(
+      `✅ Match: ${socketId} <-> ${bestMatch} (score: ${bestScore}, wait: ${waitTime}ms, level: ${level})`
+    );
+
+    return {
+      success: true,
+      matched: true,
+      user1: socketId,
+      user2: bestMatch,
+      user1Data,
+      user2Data,
+      level,
+    };
+  }
+
+  findMatch(socketId) {
+    const currentUser = this.waitingUsers.get(socketId);
+    if (!currentUser) {
+      return { success: false, message: 'User not in queue' };
+    }
+
+    const waitTime = Date.now() - currentUser.joinedAt;
+
+    // 1) Preferred person (gender + country both ways)
+    const preferred = this.findBestCandidate(socketId, 'strict');
+    if (preferred) {
+      return this.pairUsers(socketId, preferred.bestMatch, preferred.bestScore, 'strict');
+    }
+
+    // 2) No preferred free — connect any free person immediately
+    const anyone = this.findBestCandidate(socketId, 'open');
+    if (anyone) {
+      return this.pairUsers(socketId, anyone.bestMatch, anyone.bestScore, 'open');
     }
 
     currentUser.lastMatchAttempt = Date.now();
-    return { success: true, matched: false, message: 'Waiting for match', level, waitTime };
+    return {
+      success: true,
+      matched: false,
+      message: 'Waiting for match',
+      level: 'open',
+      waitTime,
+    };
   }
 
   checkCompatibility(user1, user2, level = 'strict') {
@@ -102,15 +121,8 @@ class MatchingQueue {
         return { compatible: false, score: 0 };
       }
       score += 50;
-    } else if (level === 'soft') {
-      // Keep gender filter; drop country requirement
-      if (!genderOk(user1, user2) || !genderOk(user2, user1)) {
-        return { compatible: false, score: 0 };
-      }
-      score += 25;
-      if (countryOk(user1, user2) && countryOk(user2, user1)) score += 15;
     } else {
-      // open — anyone, but still score preferred matches higher
+      // open — anyone free; still score preferred matches higher
       score += 8;
       if (genderOk(user1, user2) && genderOk(user2, user1)) score += 20;
       if (countryOk(user1, user2) && countryOk(user2, user1)) score += 10;
@@ -119,8 +131,7 @@ class MatchingQueue {
     if (user1.interests?.length > 0 && user2.interests?.length > 0) {
       const common = user1.interests.filter((i) => user2.interests.includes(i));
       score += common.length * 12;
-      if (level === 'strict' && common.length === 0 && user1.interests.length && user2.interests.length) {
-        // Prefer overlap in strict, but don't block — volume matters
+      if (level === 'strict' && common.length === 0) {
         score -= 5;
       }
     }

@@ -319,9 +319,7 @@ io.on('connection', async (socket) => {
           message:
             level === 'strict'
               ? 'Searching preferred matches...'
-              : level === 'soft'
-                ? 'Widening filters...'
-                : 'Searching anyone nearby...',
+              : 'No preferred match free — connecting with anyone...',
           level,
           waitTime: result.waitTime,
         });
