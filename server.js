@@ -101,6 +101,15 @@ app.get('/api/auth/success', (req, res) => {
   const token = typeof req.query.token === 'string' ? req.query.token : '';
   const error = typeof req.query.error === 'string' ? req.query.error : '';
   const detail = typeof req.query.detail === 'string' ? req.query.detail : '';
+  const mobile = req.query.mobile === '1';
+
+  // Browser login: open the video chat. Don't sit on a camify:// page.
+  if (token && !mobile) {
+    const next = new URL('https://camify.fun/chat');
+    next.searchParams.set('token', token);
+    return res.redirect(next.toString());
+  }
+
   const deep = token
     ? `camify://auth/success?token=${encodeURIComponent(token)}`
     : error
@@ -132,7 +141,10 @@ app.get('/api/auth/success', (req, res) => {
   <script>
     var deep = ${JSON.stringify(deep)};
     var token = ${JSON.stringify(token)};
-    if (token) { try { location.replace(deep); } catch (e) {} }
+    var mobile = ${JSON.stringify(mobile)};
+    // Mobile auth session must stay on this https URL so the app can read the token.
+    // Auto-jumping to camify:// leaves the in-app browser open and never shows video.
+    if (token && !mobile) { try { location.replace(deep); } catch (e) {} }
   </script>
 </body></html>`);
 });
