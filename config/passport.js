@@ -1,7 +1,9 @@
 import 'dotenv/config';
+import mongoose from 'mongoose';
 import passport from 'passport';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import { fixNullableUniqueIndexes } from './database.js';
 import User from '../models/User.js';
 
 const googleClientID = process.env.GOOGLE_CLIENT_ID;
@@ -134,15 +136,9 @@ if (
           try {
             user = await User.create(payload);
           } catch (createErr) {
-            if (createErr?.code === 11000 && createErr.keyPattern?.socketId) {
-              const users = User.collection;
-              const indexes = await users.indexes();
-              for (const idx of indexes) {
-                const keys = Object.keys(idx.key || {});
-                if (idx.unique && keys.length === 1 && keys[0] === 'socketId') {
-                  await users.dropIndex(idx.name);
-                }
-              }
+            const dupField = Object.keys(createErr?.keyPattern || {})[0];
+            if (createErr?.code === 11000 && ['mobile', 'phone', 'socketId'].includes(dupField)) {
+              await fixNullableUniqueIndexes(mongoose.connection);
               user = await User.create(payload);
               return done(null, user);
             }
