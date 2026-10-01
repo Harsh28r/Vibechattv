@@ -235,8 +235,8 @@ router.post('/logout', protect, async (req, res) => {
   try {
     // Update user status
     await User.findByIdAndUpdate(req.user._id, {
-      isOnline: false,
-      socketId: null
+      $set: { isOnline: false },
+      $unset: { socketId: '' }
     });
 
     res.json({

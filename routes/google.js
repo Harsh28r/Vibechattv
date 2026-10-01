@@ -4,41 +4,49 @@ import { generateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// @route   GET /api/auth/google
-// @desc    Redirect to Google for authentication
-// @access  Public
-router.get('/google',
-  passport.authenticate('google', {
-    scope: ['profile', 'email']
-  })
-);
+function successUrl(token, state) {
+  const q = new URLSearchParams({ token });
+  if (state === 'mobile') q.set('mobile', '1');
+  return `https://api.coinsclarity.com/api/auth/success?${q.toString()}`;
+}
 
-// @route   GET /api/auth/google/callback
-// @desc    Google callback
-// @access  Public
-router.get('/google/callback',
-  passport.authenticate('google', { 
-    session: false,
-    failureRedirect: '/login?error=google_auth_failed'
-  }),
-  (req, res) => {
-    try {
-      // Generate JWT token
-      const token = generateToken(req.user._id);
-      
-      // Redirect to frontend with token
-      const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5173';
-      res.redirect(`${frontendURL}/auth/success?token=${token}`);
-    } catch (error) {
-      console.error('Google callback error:', error);
-      const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5173';
-      res.redirect(`${frontendURL}/login?error=auth_error`);
+function failUrl(state, reason = 'google_auth_failed') {
+  const q = new URLSearchParams({ error: reason });
+  if (state === 'mobile') q.set('mobile', '1');
+  return `https://api.coinsclarity.com/api/auth/success?${q.toString()}`;
+}
+
+router.get('/google', (req, res, next) => {
+  const state = req.query.platform === 'mobile' ? 'mobile' : 'web';
+  passport.authenticate('google', {
+    scope: ['openid', 'profile', 'email'],
+    state,
+  })(req, res, next);
+});
+
+router.get('/google/callback', (req, res, next) => {
+  const state = String(req.query.state || 'web');
+  passport.authenticate('google', { session: false }, (err, user, info) => {
+    if (err) {
+      console.error('Google auth error:', err);
+      const detail = encodeURIComponent(
+        String(err.message || err.code || 'unknown').slice(0, 120)
+      );
+      return res.redirect(`${failUrl(state, 'auth_error')}&detail=${detail}`);
     }
-  }
-);
+    if (!user) {
+      console.error('Google auth no user:', info);
+      return res.redirect(failUrl(state, 'google_auth_failed'));
+    }
+    try {
+      const token = generateToken(user._id);
+      return res.redirect(successUrl(token, state));
+    } catch (error) {
+      console.error('Google callback token error:', error);
+      const detail = encodeURIComponent(String(error.message || 'token').slice(0, 120));
+      return res.redirect(`${failUrl(state, 'auth_error')}&detail=${detail}`);
+    }
+  })(req, res, next);
+});
 
 export default router;
-
-
-
-

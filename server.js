@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -5,7 +6,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import geoip from 'geoip-lite';
@@ -23,11 +23,7 @@ import firebaseRoutes from './routes/firebase.js';
 import moderationRoutes from './routes/moderation.js';
 import { verifyToken } from './middleware/auth.js';
 
-
-
-// Load environment variables
-dotenv.config();
-
+// Environment loaded via `import 'dotenv/config'` (must stay above other imports)
 // Initialize Express app
 const app = express();
 const httpServer = createServer(app);
@@ -99,6 +95,47 @@ app.use('/api/auth', facebookRoutes);
 app.use('/api/auth', googleRoutes);
 app.use('/api/auth', firebaseRoutes);
 app.use('/api/moderation', moderationRoutes);
+
+// OAuth landing page (no frontend deploy needed)
+app.get('/api/auth/success', (req, res) => {
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  const error = typeof req.query.error === 'string' ? req.query.error : '';
+  const detail = typeof req.query.detail === 'string' ? req.query.detail : '';
+  const deep = token
+    ? `camify://auth/success?token=${encodeURIComponent(token)}`
+    : error
+      ? `camify://auth/success?error=${encodeURIComponent(error)}`
+      : 'camify://auth/success';
+
+  const msg = error
+    ? `Login failed: ${error}${detail ? ' — ' + detail : ''}`
+    : token
+      ? 'Signed in. Returning to app…'
+      : 'Missing token.';
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Camify</title>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#07090F;color:#F7F3EE;font-family:system-ui,sans-serif;text-align:center;padding:24px}
+  a{display:inline-block;margin-top:20px;background:#FF4B2B;color:#fff;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:700}
+  .d{opacity:.65;font-size:13px;margin-top:10px;word-break:break-word;max-width:520px}
+</style></head>
+<body>
+  <div>
+    <h1>Camify</h1>
+    <p>${msg.replace(/</g, '&lt;')}</p>
+    ${detail ? `<p class="d">${detail.replace(/</g, '&lt;')}</p>` : ''}
+    ${token || error ? `<a href="${deep}">Open Camify</a>` : ''}
+  </div>
+  <script>
+    var deep = ${JSON.stringify(deep)};
+    var token = ${JSON.stringify(token)};
+    if (token) { try { location.replace(deep); } catch (e) {} }
+  </script>
+</body></html>`);
+});
 
 // Initialize matching queue
 const matchingQueue = new MatchingQueue();

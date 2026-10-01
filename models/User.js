@@ -56,9 +56,10 @@ const userSchema = new mongoose.Schema({
   },
   
   // Socket & Chat Info
+  // No default. A unique index treats explicit null as a value, so every
+  // new Google/Facebook user collided on socketId: null and signup 500'd.
   socketId: {
-    type: String,
-    default: null
+    type: String
   },
   isOnline: {
     type: Boolean,
@@ -145,10 +146,10 @@ const userSchema = new mongoose.Schema({
   autoIndex: false   // Prevent auto-creation of indexes
 });
 
-// Hash password before saving
+// Hash password before saving (skip OAuth users with no password)
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  
+  if (!this.isModified('password') || !this.password) return next();
+
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);

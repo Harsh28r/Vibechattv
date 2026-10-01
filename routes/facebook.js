@@ -4,37 +4,45 @@ import { generateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// @route   GET /api/auth/facebook
-// @desc    Redirect to Facebook for authentication
-// @access  Public
-router.get('/facebook',
-  passport.authenticate('facebook', {
-    scope: ['email', 'public_profile']
-  })
-);
+function successUrl(token, state) {
+  const q = new URLSearchParams({ token });
+  if (state === 'mobile') q.set('mobile', '1');
+  return `https://api.coinsclarity.com/api/auth/success?${q.toString()}`;
+}
 
-// @route   GET /api/auth/facebook/callback
-// @desc    Facebook callback
-// @access  Public
-router.get('/facebook/callback',
-  passport.authenticate('facebook', { 
-    session: false,
-    failureRedirect: '/login?error=facebook_auth_failed'
-  }),
-  (req, res) => {
-    try {
-      // Generate JWT token
-      const token = generateToken(req.user._id);
-      
-      // Redirect to frontend with token
-      const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5173';
-      res.redirect(`${frontendURL}/auth/success?token=${token}`);
-    } catch (error) {
-      console.error('Facebook callback error:', error);
-      res.redirect(`${frontendURL}/login?error=auth_error`);
+function failUrl(state, reason = 'facebook_auth_failed') {
+  const q = new URLSearchParams({ error: reason });
+  if (state === 'mobile') q.set('mobile', '1');
+  return `https://api.coinsclarity.com/api/auth/success?${q.toString()}`;
+}
+
+router.get('/facebook', (req, res, next) => {
+  const state = req.query.platform === 'mobile' ? 'mobile' : 'web';
+  passport.authenticate('facebook', {
+    scope: ['email', 'public_profile'],
+    state,
+  })(req, res, next);
+});
+
+router.get('/facebook/callback', (req, res, next) => {
+  const state = String(req.query.state || 'web');
+  passport.authenticate('facebook', { session: false }, (err, user, info) => {
+    if (err) {
+      console.error('Facebook auth error:', err);
+      return res.redirect(failUrl(state, 'auth_error'));
     }
-  }
-);
+    if (!user) {
+      console.error('Facebook auth no user:', info);
+      return res.redirect(failUrl(state, 'facebook_auth_failed'));
+    }
+    try {
+      const token = generateToken(user._id);
+      return res.redirect(successUrl(token, state));
+    } catch (error) {
+      console.error('Facebook callback token error:', error);
+      return res.redirect(failUrl(state, 'auth_error'));
+    }
+  })(req, res, next);
+});
 
 export default router;
-
